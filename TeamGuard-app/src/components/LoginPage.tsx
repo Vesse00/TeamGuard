@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, UserCheck, Briefcase, ShieldAlert, CheckCircle, Eye, EyeOff, KeyRound, ChevronLeft, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -18,12 +18,13 @@ const DURATION_OPTIONS = {
         { value: '4', label: '4 lata' },
     ]
 };
+// Dodano 'SET_PASSWORD' do typów widoku
+type ViewState = 'LOGIN' | 'REGISTER' | 'FORGOT_EMAIL' | 'FORGOT_CODE' | 'FORGOT_NEW_PASS' | 'SET_PASSWORD';
 
-// Typ widoku dla obsługi wielu ekranów
-type ViewState = 'LOGIN' | 'REGISTER' | 'FORGOT_EMAIL' | 'FORGOT_CODE' | 'FORGOT_NEW_PASS';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams(); // Do pobrania tokena z URL
   
   // Stan widoku
   const [view, setView] = useState<ViewState>('LOGIN');
@@ -31,6 +32,10 @@ export function LoginPage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [loading, setLoading] = useState(false);
   const [createdUserId, setCreatedUserId] = useState<number | null>(null);
+
+  // Dane zaproszonego użytkownika (z tokena)
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [inviteUser, setInviteUser] = useState<{ firstName: string; lastName: string; email: string } | null>(null);
   
   // Pokaż/Ukryj hasło
   const [showPassword, setShowPassword] = useState(false); 
@@ -54,6 +59,29 @@ export function LoginPage() {
     bhpDuration: '5',
     medicalDuration: '2'
   });
+
+  // --- 1. SPRAWDZANIE LINKU ZAPROSZENIA ---
+  useEffect(() => {
+      const tokenFromUrl = searchParams.get('token');
+      if (tokenFromUrl) {
+          setLoading(true);
+          // Weryfikujemy token w backendzie
+          axios.get(`http://localhost:3000/api/auth/verify-invite?token=${tokenFromUrl}`)
+              .then(res => {
+                  setInviteToken(tokenFromUrl);
+                  setInviteUser(res.data); // Mamy imię i nazwisko!
+                  setView('SET_PASSWORD'); // Przełączamy widok
+                  // Automatycznie wypełniamy email, żeby user nie musiał
+                  setAuthData(prev => ({ ...prev, email: res.data.email }));
+              })
+              .catch(err => {
+                  toast.error('Link aktywacyjny jest nieważny lub wygasł.');
+                  // Usuwamy token z URL, żeby nie mylił
+                  navigate('/login', { replace: true });
+              })
+              .finally(() => setLoading(false));
+      }
+  }, [searchParams, navigate]);
 
   const handleNameInput = (e: React.ChangeEvent<HTMLInputElement>, field: 'firstName' | 'lastName') => {
       const val = e.target.value;
@@ -117,6 +145,39 @@ export function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+// --- OBSŁUGA USTAWIANIA HASŁA (Z LINKU) ---
+  const handleSetInvitePassword = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (resetData.newPassword !== resetData.confirmPassword) return toast.error('Hasła nie są identyczne');
+      if (resetData.newPassword.length < 8) return toast.error('Hasło min. 8 znaków');
+
+      setLoading(true);
+      try {
+          // Ustawiamy hasło
+          await axios.post('http://localhost:3000/api/auth/set-password', { 
+              token: inviteToken, 
+              password: resetData.newPassword 
+          });
+          
+          toast.success('Hasło ustawione pomyślnie!');
+          
+          // Automatyczne logowanie po ustawieniu hasła
+          const loginRes = await axios.post('http://localhost:3000/api/login', {
+              email: inviteUser?.email,
+              password: resetData.newPassword
+          });
+          
+          localStorage.setItem('token', loginRes.data.token);
+          localStorage.setItem('user', JSON.stringify(loginRes.data.user));
+          
+          // Czyścimy URL z tokena i idziemy do dashboardu (profilu)
+          navigate('/', { replace: true });
+
+      } catch (error: any) {
+          toast.error(error.response?.data?.error || 'Błąd ustawiania hasła.');
+      } finally { setLoading(false); }
   };
 
   // --- LOGIKA RESETOWANIA HASŁA ---
@@ -391,6 +452,28 @@ export function LoginPage() {
 
                     <button disabled={loading} type="submit" className="w-full bg-blue-600 text-white font-bold h-12 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 group disabled:opacity-70">
                         {loading ? 'Przetwarzanie...' : (view === 'LOGIN' ? 'Zaloguj się' : 'Zarejestruj Managera')} {!loading && <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform"/>}
+                    </button>
+                </form>
+            )}
+
+            {/* --- 2. FORMULARZ USTAWIANIA HASŁA (NOWY PRACOWNIK Z LINKU) --- */}
+            {view === 'SET_PASSWORD' && (
+                <form onSubmit={handleSetInvitePassword} className="space-y-5 animate-in slide-in-from-right">
+                    <div className="text-center mb-4">
+                        <p className="text-sm text-slate-500">Twój email: <span className="font-bold text-slate-800">{inviteUser?.email}</span></p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nowe hasło</label>
+                        <input type="password" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-800" 
+                            value={resetData.newPassword} onChange={e => setResetData({...resetData, newPassword: e.target.value})} />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Powtórz hasło</label>
+                        <input type="password" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-800" 
+                            value={resetData.confirmPassword} onChange={e => setResetData({...resetData, confirmPassword: e.target.value})} />
+                    </div>
+                    <button disabled={loading} className="w-full bg-slate-800 text-white font-bold h-12 rounded-xl hover:bg-slate-900 transition-colors shadow-lg">
+                        {loading ? 'Zapisywanie...' : 'Aktywuj Konto i Zaloguj'}
                     </button>
                 </form>
             )}

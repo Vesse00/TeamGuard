@@ -235,7 +235,7 @@ app.post('/api/employees', async (req, res) => {
     });
 
     // 5. Wyślij Email z zaproszeniem
-    const inviteLink = `http://localhost:5173/set-password?token=${inviteToken}`;
+    const inviteLink = `http://localhost:5173/login?token=${inviteToken}`;
     const htmlContent = `
         <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center; border: 1px solid #eee; border-radius: 10px;">
             <h2 style="color: #2563eb;">Witaj w TeamGuard!</h2>
@@ -464,6 +464,8 @@ app.post('/api/login', async (req, res) => {
     // Znajdź ID pracownika powiązanego z tym userem (do linku "Mój Profil")
     const employeeId = user.employee ? user.employee.id : null;
 
+    const position = user.employee ? user.employee.position : (user.role === 'ADMIN' ? 'Administrator' : 'Pracownik');
+
     res.json({ 
         token, 
         user: { 
@@ -472,7 +474,8 @@ app.post('/api/login', async (req, res) => {
             lastName: user.lastName, 
             email: user.email,
             role: user.role,       // <--- WAŻNE
-            employeeId: employeeId // <--- WAŻNE
+            employeeId: employeeId, // <--- WAŻNE
+            position: position          // <--- WAŻNE (dla wyświetlania roli w UI)
         } 
     });
   } catch (error) { res.status(500).json({ error: 'Błąd logowania' }); }
@@ -498,6 +501,26 @@ app.post('/api/auth/set-password', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: 'Błąd ustawiania hasła.' });
     }
+});
+// --- WERYFIKACJA TOKENA (Dla LoginPage) ---
+app.get('/api/auth/verify-invite', async (req, res) => {
+    const { token } = req.query;
+    if (!token || typeof token !== 'string') return res.status(400).json({ error: 'Brak tokena' });
+
+    try {
+        const user = await prisma.user.findFirst({ 
+            where: { inviteToken: token } 
+        });
+
+        if (!user) return res.status(400).json({ error: 'Link jest nieważny lub wygasł.' });
+
+        // Zwracamy tylko imię i nazwisko, aby przywitać użytkownika
+        res.json({ 
+            firstName: user.firstName, 
+            lastName: user.lastName, 
+            email: user.email 
+        });
+    } catch (e) { res.status(500).json({ error: 'Błąd serwera' }); }
 });
 
 // --- ONBOARDING ADMINA ---

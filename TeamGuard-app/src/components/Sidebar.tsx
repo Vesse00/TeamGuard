@@ -10,14 +10,16 @@ import {
   ChevronRight, 
   MoreHorizontal,
   History,
-  UserCircle // Ikona dla profilu
+  UserCircle,
+  Settings
 } from 'lucide-react';
 
 export function Sidebar() {
   const location = useLocation();
   const [isOtherOpen, setIsOtherOpen] = useState(false);
+  
+  // 1. POBIERZ ROLE UŻYTKOWNIKA
   const [user, setUser] = useState<any>(null);
-
   useEffect(() => {
       const u = localStorage.getItem('user');
       if (u) setUser(JSON.parse(u));
@@ -36,29 +38,6 @@ export function Sidebar() {
   const inactiveClasses = "text-slate-400 hover:bg-slate-800 hover:text-white";
   const getLinkClass = (path: string) => `${baseLinkClasses} ${isActive(path) ? activeClasses : inactiveClasses}`;
 
-  // --- LISTY MENU ---
-  
-  // Menu dla ADMINA
-  const adminMenu = [
-    { icon: <LayoutDashboard size={20} />, label: 'Pulpit', path: '/' },
-    { icon: <Users size={20} />, label: 'Pracownicy', path: '/employees' },
-    { icon: <Calendar size={20} />, label: 'Kalendarz', path: '/calendar' },
-  ];
-
-  // Menu dla UŻYTKOWNIKA (Tylko jego profil)
-  const userMenu = [
-    { 
-      icon: <UserCircle size={20} />, 
-      label: 'Mój Profil', 
-      path: user?.employeeId ? `/employees/${user.employeeId}` : '#' 
-    },
-    // Ewentualnie Kalendarz, jeśli chcesz, żeby user widział terminy:
-    // { icon: <Calendar size={20} />, label: 'Kalendarz', path: '/calendar' },
-  ];
-
-  // Wybieramy odpowiednie menu
-  const menuItems = isAdmin ? adminMenu : userMenu;
-
   return (
     <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-screen fixed left-0 top-0 z-50">
       
@@ -69,19 +48,33 @@ export function Sidebar() {
         </span>
       </div>
 
-      {/* GŁÓWNA NAWIGACJA */}
+      {/* MENU */}
       <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
         <p className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Menu</p>
         
-        {/* Renderowanie listy zależnej od roli */}
-        {menuItems.map((item) => (
-           <Link key={item.label} to={item.path} className={getLinkClass(item.path)}>
-             {item.icon}
-             {item.label}
-           </Link>
-        ))}
+        {/* --- MENU DLA ADMINA --- */}
+        {isAdmin && (
+            <>
+                <Link to="/" className={getLinkClass('/')}>
+                    <LayoutDashboard size={20} /> Pulpit
+                </Link>
+                <Link to="/employees" className={getLinkClass('/employees')}>
+                    <Users size={20} /> Pracownicy
+                </Link>
+                <Link to="/calendar" className={getLinkClass('/calendar')}>
+                    <Calendar size={20} /> Kalendarz
+                </Link>
+            </>
+        )}
 
-        {/* SEKCJA "INNE" - TYLKO DLA ADMINA */}
+        {/* --- MENU DLA ZWYKŁEGO USERA --- */}
+        {!isAdmin && user?.employeeId && (
+            <Link to={`/employees/${user.employeeId}`} className={getLinkClass(`/employees/${user.employeeId}`)}>
+                <UserCircle size={20} /> Mój Profil
+            </Link>
+        )}
+
+        {/* --- ROZWIJANE MENU "INNE" (TYLKO ADMIN) --- */}
         {isAdmin && (
             <div className="pt-2">
                 <button 
@@ -109,15 +102,13 @@ export function Sidebar() {
         )}
       </nav>
 
-      {/* STOPKA (POMOC) - Widoczna dla każdego */}
+      {/* STOPKA */}
       <div className="p-3 border-t border-slate-800 bg-slate-900">
         <p className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">System</p>
         <Link to="/help" className={getLinkClass('/help')}>
-          <LifeBuoy size={20} />
-          Pomoc
+          <LifeBuoy size={20} /> Pomoc
         </Link>
       </div>
-
     </aside>
   );
 }

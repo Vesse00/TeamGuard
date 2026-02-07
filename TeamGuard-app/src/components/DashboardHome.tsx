@@ -1,116 +1,101 @@
 import { useEffect, useState } from 'react';
+import { Users, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Users, AlertTriangle, Clock, ArrowRight } from 'lucide-react';
 
 export function DashboardHome() {
   const [stats, setStats] = useState({ total: 0, expired: 0, warning: 0 });
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate(); // Hook do przekierowania
+  const navigate = useNavigate();
 
   useEffect(() => {
-
+    // 1. SPRAWDZENIE ROLI
     const userStr = localStorage.getItem('user');
     const user = userStr ? JSON.parse(userStr) : null;
 
+    // Jeśli to zwykły USER -> przekieruj na jego profil
     if (user && user.role !== 'ADMIN') {
-        // Jeśli to nie Admin, wyrzuć go na jego profil
         if (user.employeeId) {
             navigate(`/employees/${user.employeeId}`, { replace: true });
         } else {
-            // Sytuacja awaryjna (user bez profilu pracownika)
-             navigate('/login'); 
+            navigate('/login');
         }
         return;
     }
 
+    // 2. JEŚLI ADMIN -> POBIERZ STATYSTYKI
     axios.get('http://localhost:3000/api/employees')
       .then(response => {
-        const data = response.data;
-        
-        // --- LOGIKA STATYSTYK ---
-        let countExpired = 0;
-        let countWarning = 0;
+        const employees = response.data;
+        const total = employees.length;
+        let expired = 0;
+        let warning = 0;
 
-        data.forEach((emp: any) => {
-          let isPersonExpired = false;
-          let isPersonWarning = false;
-
-          emp.compliance.forEach((c: any) => {
-            const today = new Date();
-            const expiry = new Date(c.expiryDate);
-            const diffTime = expiry.getTime() - today.getTime();
-            const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-            if (daysLeft <= 0) isPersonExpired = true;
-            else if (daysLeft > 0 && daysLeft <= 30) isPersonWarning = true;
-          });
-
-          if (isPersonExpired) countExpired++;
-          else if (isPersonWarning) countWarning++;
+        employees.forEach((emp: any) => {
+            const hasExpired = emp.compliance.some((c: any) => c.status === 'EXPIRED');
+            const hasWarning = emp.compliance.some((c: any) => c.status === 'WARNING');
+            if (hasExpired) expired++;
+            else if (hasWarning) warning++;
         });
 
-        setStats({
-          total: data.length,
-          expired: countExpired,
-          warning: countWarning
-        });
+        setStats({ total, expired, warning });
         setLoading(false);
       })
-      .catch(err => console.error(err));
+      .catch(error => {
+        console.error('Błąd pobierania danych:', error);
+        setLoading(false);
+      });
   }, [navigate]);
 
-  // Jeśli przekierowujemy, nie renderuj nic (żeby nie mignęło)
+  // Jeśli nie admin, nic nie renderuj (czekaj na redirect)
   const userStr = localStorage.getItem('user');
   const user = userStr ? JSON.parse(userStr) : null;
   if (user?.role !== 'ADMIN') return null;
 
-  if (loading) return <div className="p-10 text-slate-400">Ładowanie statystyk...</div>;
-
   return (
-    <div className="w-full">
+    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-500">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-800">Panel Zarządzania</h1>
-        <p className="text-slate-500 mt-2">Witaj z powrotem! Oto co dzieje się w Twoim zespole.</p>
+        <h1 className="text-3xl font-bold text-slate-800">Pulpit Zarządzania</h1>
+        <p className="text-slate-500 mt-2">Przegląd statusu uprawnień pracowników.</p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <Link to="/employees" className="block group h-full">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer h-full flex flex-col justify-between">
-              
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-800 group-hover:text-blue-600 transition-colors">Przegląd Zespołu</h2>
-                  <p className="text-slate-500 mt-1">Kliknij, aby zarządzać pracownikami i terminami.</p>
-                </div>
-                <div className="p-2 bg-blue-50 text-blue-600 rounded-full group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                  <ArrowRight size={24} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mt-4 pt-6 border-t border-slate-100">
-                <div className="text-center md:text-left">
-                  <span className="block text-3xl font-bold text-red-600">{stats.expired}</span>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 justify-center md:justify-start"><AlertTriangle size={12} /> Pilne</span>
-                </div>
-                <div className="text-center md:text-left border-l border-slate-100 pl-4">
-                  <span className="block text-3xl font-bold text-amber-500">{stats.warning}</span>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 justify-center md:justify-start"><Clock size={12} /> Ważne</span>
-                </div>
-                <div className="text-center md:text-left border-l border-slate-100 pl-4">
-                  <span className="block text-3xl font-bold text-slate-700">{stats.total}</span>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 justify-center md:justify-start"><Users size={12} /> Razem</span>
-                </div>
-              </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {/* KARTA 1: WSZYSCY */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
+            <div className="p-4 bg-blue-50 text-blue-600 rounded-xl"><Users size={32}/></div>
+            <div>
+                <p className="text-sm font-bold text-slate-400 uppercase">Wszyscy Pracownicy</p>
+                <p className="text-3xl font-bold text-slate-800">{loading ? '...' : stats.total}</p>
             </div>
-          </Link>
         </div>
 
-        <div className="hidden lg:block bg-slate-100 rounded-2xl border border-slate-200 border-dashed flex items-center justify-center p-8 text-slate-400 font-medium">
-            Miejsce na wykres lub kalendarz
+        {/* KARTA 2: WYGASŁE */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
+            <div className="p-4 bg-red-50 text-red-600 rounded-xl"><AlertTriangle size={32}/></div>
+            <div>
+                <p className="text-sm font-bold text-slate-400 uppercase">Wygasłe Uprawnienia</p>
+                <p className="text-3xl font-bold text-red-600">{loading ? '...' : stats.expired}</p>
+            </div>
         </div>
+
+        {/* KARTA 3: WYGASAJĄCE */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
+            <div className="p-4 bg-orange-50 text-orange-600 rounded-xl"><Clock size={32}/></div>
+            <div>
+                <p className="text-sm font-bold text-slate-400 uppercase">Wygasają wkrótce</p>
+                <p className="text-3xl font-bold text-orange-600">{loading ? '...' : stats.warning}</p>
+            </div>
+        </div>
+      </div>
+
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-8 text-white shadow-xl flex justify-between items-center">
+          <div>
+              <h2 className="text-2xl font-bold mb-2">Wszystko pod kontrolą?</h2>
+              <p className="text-blue-100">Sprawdź szczegółową listę pracowników lub wygeneruj raport.</p>
+          </div>
+          <Link to="/employees" className="bg-white text-blue-600 px-6 py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors shadow-lg">
+              Przejdź do listy
+          </Link>
       </div>
     </div>
   );

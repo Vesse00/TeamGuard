@@ -289,6 +289,7 @@ export function SettingsPage() {
 
         
         {/* --- POWIADOMIENIA --- */}
+        {isAdmin && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
                 <Bell size={18} className="text-blue-600"/>
@@ -388,11 +389,14 @@ export function SettingsPage() {
             </div>
         
         </div>
-        
+        )}
+        {isAdmin && (
         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 flex items-start gap-4">
             <div className="p-3 bg-blue-100 text-blue-600 rounded-full"><Shield size={24} /></div>
             <div><h3 className="text-lg font-bold text-blue-900">Rola Administratora</h3><p className="text-sm text-blue-700 mt-1">Masz pełne uprawnienia do zarządzania pracownikami, dokumentami oraz konfiguracją systemu.</p></div>
         </div>
+        )}
+        
         </div>
 
     </div>

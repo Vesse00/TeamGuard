@@ -26,9 +26,36 @@ export function Navbar() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const navigate = useNavigate();
+
+  
   
   const [user, setUser] = useState<any>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  useEffect(() => {
+      const u = localStorage.getItem('user');
+      if (u) setUser(JSON.parse(u));
+  }, []);
+
+  const isAdmin = user?.role === 'ADMIN';
+
+  // --- POWIADOMIENIA (RÓŻNE DLA RÓL) ---
+  useEffect(() => {
+    if (!user) return;
+
+    if (isAdmin) {
+        // ADMIN: Widzi problemy w firmie
+        setNotifications([
+            { id: 1, title: 'Wygasające badania', message: 'Jan Kowalski - badania wygasają za 3 dni.', isRead: false, createdAt: 'Teraz' },
+            { id: 2, title: 'Nowy pracownik', message: 'Zarejestrowano nowe konto.', isRead: true, createdAt: '1h temu' }
+        ]);
+    } else {
+        // USER: Widzi komunikaty dla siebie
+        setNotifications([
+            { id: 101, title: 'Witaj!', message: 'Witamy w panelu pracownika.', isRead: false, createdAt: 'Teraz' },
+            { id: 102, title: 'Przypomnienie', message: 'Uzupełnij dane w profilu.', isRead: true, createdAt: '1 dzień temu' }
+        ]);
+    }
+  }, [user, isAdmin]);
   
   // --- STANY WYSZUKIWARKI ---
   const [query, setQuery] = useState('');
@@ -153,27 +180,27 @@ export function Navbar() {
     <nav className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-40">
       
       {/* --- WYSZUKIWARKA --- */}
-      <div className="relative w-96" ref={searchRef}>
-        <div className="relative group">
-            <input 
-              type="text" 
-              placeholder="Szukaj pracownika..." 
-              className="w-full h-11 pl-11 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-medium text-slate-700 placeholder:text-slate-400"
-              value={query}
-              onChange={(e) => handleSearch(e.target.value)}
-              onFocus={() => query.length >= 2 && setIsSearchOpen(true)}
-            />
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
-            
-            {query && (
-                <button 
-                    onClick={() => { setQuery(''); setIsSearchOpen(false); }} 
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                >
-                    <X size={16} />
-                </button>
-            )}
-        </div>
+        <div className="relative w-96" ref={searchRef}>
+            <div className="relative group">
+                <input 
+                type="text" 
+                placeholder="Szukaj pracownika..." 
+                className="w-full h-11 pl-11 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-medium text-slate-700 placeholder:text-slate-400"
+                value={query}
+                onChange={(e) => handleSearch(e.target.value)}
+                onFocus={() => query.length >= 2 && setIsSearchOpen(true)}
+                />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
+                
+                {query && (
+                    <button 
+                        onClick={() => { setQuery(''); setIsSearchOpen(false); }} 
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                    >
+                        <X size={16} />
+                    </button>
+                )}
+            </div>
 
         {/* LISTA WYNIKÓW (DROPDOWN) */}
         {isSearchOpen && (
@@ -209,7 +236,7 @@ export function Navbar() {
                 )}
             </div>
         )}
-      </div>
+        </div>
 
       {/* --- PRAWA STRONA --- */}
       <div className="flex items-center gap-6">
@@ -283,7 +310,7 @@ export function Navbar() {
 
         {/* PROFIL USERA */}
         <div className="relative">
-          <button 
+          <button  
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="flex items-center gap-3 hover:bg-slate-50 p-1.5 pr-3 rounded-xl transition-all border border-transparent hover:border-slate-100"
           >
@@ -292,7 +319,7 @@ export function Navbar() {
             </div>
             <div className="text-left hidden md:block">
               <p className="text-sm font-bold text-slate-700 leading-tight">{user?.firstName || 'User'}</p>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wide">Administrator</p>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wide">{isAdmin ? 'ADMINISTRATOR' : (user?.position || 'PRACOWNIK')}</p>
             </div>
             <ChevronDown size={16} className={`text-slate-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
           </button>

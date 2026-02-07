@@ -11,7 +11,6 @@ import { SettingsPage } from './components/SettingsPage';
 import { ReportsPage } from './components/ReportsPage';
 import { CalendarPage } from './components/CalendarPage';
 import { LogsPage } from './components/LogsPage';
-import { SetPasswordPage } from './components/SetPasswordPage';
 
 // Komponenty nawigacyjne
 import { Sidebar } from './components/Sidebar';
@@ -57,7 +56,6 @@ function App() {
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/logs" element={<LogsPage />} />
-            <Route path="/set-password" element={<SetPasswordPage />} />
           </Route>
 
         </Route>

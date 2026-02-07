@@ -210,7 +210,10 @@ export function EmployeeDetails() {
 
   return (
     <div className="max-w-4xl mx-auto pb-20">
-      <Link to="/employees" className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 mb-6 font-medium transition-colors"><ArrowLeft size={18} /> Wróć do listy</Link>
+      {isAdmin && (
+        <Link to="/employees" className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 mb-6 font-medium transition-colors"><ArrowLeft size={18} /> Wróć do listy</Link>
+      )}
+      
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
         <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row items-center md:items-start gap-6">
           <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl font-bold border-4 border-white shadow-sm shrink-0">{employee.avatarInitials || <User size={40} />}</div>
@@ -222,16 +225,14 @@ export function EmployeeDetails() {
               <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200"><Briefcase size={14} /> Zatrudniony: {new Date(employee.hiredAt).toLocaleDateString()}</div>
             </div>
           </div>
-          <div className="flex gap-3">
-            {isAdmin && (
-              <>
-              <Link to={`/employees/${employee.id}/edit`} className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-4 py-2.5 rounded-lg font-medium shadow-sm transition-colors h-full flex items-center gap-2 decoration-0"><Pencil size={16}/> Edytuj Profil / Uprawnienia</Link>
-              {!employee.isSystemAdmin && (
-                <button onClick={handleDeleteClick} className="bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 hover:border-red-200 p-2.5 rounded-lg transition-colors shadow-sm" title="Usuń pracownika"><Trash2 size={20} /></button>
-              )}
-              </>
-            )}
-          </div>
+          {isAdmin && (
+            <div className="flex gap-3">
+                <Link to={`/employees/${employee.id}/edit`} className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-4 py-2.5 rounded-lg font-medium shadow-sm transition-colors h-full flex items-center gap-2 decoration-0"><Pencil size={16}/> Edytuj Profil / Uprawnienia</Link>
+                {!employee.isSystemAdmin && (
+                  <button onClick={handleDeleteClick} className="bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 hover:border-red-200 p-2.5 rounded-lg transition-colors shadow-sm" title="Usuń pracownika"><Trash2 size={20} /></button>
+                )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -251,7 +252,9 @@ export function EmployeeDetails() {
               <div className="text-right">
                  {style.isExpired ? (
                     <div className="flex items-center gap-3">
-                        <button onClick={() => handleRenewClick(item)} className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md shadow-blue-200 transition-colors" title="Odnów automatycznie"><RefreshCw size={20} /></button>
+                        {isAdmin && (                        
+                          <button onClick={() => handleRenewClick(item)} className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md shadow-blue-200 transition-colors" title="Odnów automatycznie"><RefreshCw size={20} /></button>
+                        )}
                         {/* ZMIANA: Usunięty tekst pod wykrzyknikiem */}
                         <div className="text-red-500 bg-red-100/50 p-2 rounded-lg">
                             <AlertTriangle size={24} />
@@ -265,7 +268,7 @@ export function EmployeeDetails() {
                                 {style.formattedTime}
                             </span>
                             zostało
-                            
+
                         </div>
                     </div>
                  )}
