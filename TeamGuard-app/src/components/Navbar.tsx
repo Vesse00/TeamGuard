@@ -111,9 +111,9 @@ export function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleSearch = async (text: string) => {
+  const handleSearch = async (text: string)=> {
     setQuery(text);
-    if (text.length < 2) {
+    if (text.length < 2 && isAdmin) {
         setResults([]);
         setIsSearchOpen(false);
         return;
@@ -178,9 +178,9 @@ export function Navbar() {
 
   return (
     <nav className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-40">
-      
-      {/* --- WYSZUKIWARKA --- */}
-        <div className="relative w-96" ref={searchRef}>
+        {isAdmin ? (
+            //wyszukiwarka tylko dla admina
+            <div className="relative w-96" ref={searchRef}>
             <div className="relative group">
                 <input 
                 type="text" 
@@ -202,41 +202,47 @@ export function Navbar() {
                 )}
             </div>
 
-        {/* LISTA WYNIKÓW (DROPDOWN) */}
-        {isSearchOpen && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden animate-in slide-in-from-top-2 duration-200 z-50">
-                {results.length > 0 ? (
-                    <div className="py-2">
-                        <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50">Znaleziono</div>
-                        {results.slice(0, 5).map((emp) => (
-                            <div 
-                                key={emp.id} 
-                                onClick={() => handleSelectResult(emp.id)}
-                                className="px-4 py-3 hover:bg-blue-50 cursor-pointer flex items-center justify-between group transition-colors border-b border-slate-50 last:border-0"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold border border-blue-200">
-                                        {emp.avatarInitials || <User size={14}/>}
+            {/* LISTA WYNIKÓW (DROPDOWN) */}
+            {isSearchOpen && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden animate-in slide-in-from-top-2 duration-200 z-50">
+                    {results.length > 0 ? (
+                        <div className="py-2">
+                            <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50">Znaleziono</div>
+                            {results.slice(0, 5).map((emp) => (
+                                <div 
+                                    key={emp.id} 
+                                    onClick={() => handleSelectResult(emp.id)}
+                                    className="px-4 py-3 hover:bg-blue-50 cursor-pointer flex items-center justify-between group transition-colors border-b border-slate-50 last:border-0"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold border border-blue-200">
+                                            {emp.avatarInitials || <User size={14}/>}
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-700 group-hover:text-blue-700 transition-colors">
+                                                {emp.firstName} {emp.lastName}
+                                            </p>
+                                            <p className="text-xs text-slate-400">{emp.position}</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-slate-700 group-hover:text-blue-700 transition-colors">
-                                            {emp.firstName} {emp.lastName}
-                                        </p>
-                                        <p className="text-xs text-slate-400">{emp.position}</p>
-                                    </div>
+                                    <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-400" />
                                 </div>
-                                <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-400" />
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="p-4 text-center text-sm text-slate-500">
-                        Nie znaleziono: "<strong>{query}</strong>"
-                    </div>
-                )}
-            </div>
-        )}
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="p-4 text-center text-sm text-slate-500">
+                            Nie znaleziono: "<strong>{query}</strong>"
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
+        ) : (
+            <div className="w-full"></div>
+        )
+        }
+        
+        
 
       {/* --- PRAWA STRONA --- */}
       <div className="flex items-center gap-6">

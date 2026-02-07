@@ -823,6 +823,46 @@ app.get('/api/notifications', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Błąd pobierania powiadomień' }); }
 });
 
+// --- POBIERANIE POWIADOMIEŃ UŻYTKOWNIKA ---
+app.get('/api/notifications/:userId', async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    
+    if (isNaN(userId)) {
+        return res.status(400).json({ error: 'Nieprawidłowe ID użytkownika' });
+    }
+
+    try {
+        const notifications = await prisma.notification.findMany({
+            where: { 
+                userId: userId // <--- KLUCZOWE: Filtrujemy po ID użytkownika
+            },
+            orderBy: { 
+                createdAt: 'desc' // Najnowsze na górze
+            },
+            take: 5 // Ograniczamy do 10 ostatnich, żeby nie zaśmiecać paska
+        });
+
+        res.json(notifications);
+    } catch (error) {
+        console.error("Błąd pobierania powiadomień:", error);
+        res.status(500).json({ error: 'Błąd serwera' });
+    }
+});
+
+// --- OZNACZANIE WSZYSTKICH JAKO PRZECZYTANE ---
+app.post('/api/notifications/:userId/read-all', async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    try {
+        await prisma.notification.updateMany({
+            where: { userId: userId, isRead: false },
+            data: { isRead: true }
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Błąd aktualizacji' });
+    }
+});
+
 app.put('/api/notifications/:id/read', async (req, res) => {
   const { id } = req.params;
   try {
