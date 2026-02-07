@@ -1,13 +1,29 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Users, AlertTriangle, Clock, ArrowRight } from 'lucide-react';
 
 export function DashboardHome() {
   const [stats, setStats] = useState({ total: 0, expired: 0, warning: 0 });
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate(); // Hook do przekierowania
 
   useEffect(() => {
+
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+
+    if (user && user.role !== 'ADMIN') {
+        // Jeśli to nie Admin, wyrzuć go na jego profil
+        if (user.employeeId) {
+            navigate(`/employees/${user.employeeId}`, { replace: true });
+        } else {
+            // Sytuacja awaryjna (user bez profilu pracownika)
+             navigate('/login'); 
+        }
+        return;
+    }
+
     axios.get('http://localhost:3000/api/employees')
       .then(response => {
         const data = response.data;
@@ -42,7 +58,12 @@ export function DashboardHome() {
         setLoading(false);
       })
       .catch(err => console.error(err));
-  }, []);
+  }, [navigate]);
+
+  // Jeśli przekierowujemy, nie renderuj nic (żeby nie mignęło)
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  if (user?.role !== 'ADMIN') return null;
 
   if (loading) return <div className="p-10 text-slate-400">Ładowanie statystyk...</div>;
 

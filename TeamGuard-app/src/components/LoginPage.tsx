@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, UserCheck, Briefcase, ShieldAlert, CheckCircle, Eye, EyeOff, KeyRound, ChevronLeft } from 'lucide-react';
+import { Lock, Mail, ArrowRight, UserCheck, Briefcase, ShieldAlert, CheckCircle, Eye, EyeOff, KeyRound, ChevronLeft, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 
 const DURATION_OPTIONS = {
@@ -25,7 +25,7 @@ type ViewState = 'LOGIN' | 'REGISTER' | 'FORGOT_EMAIL' | 'FORGOT_CODE' | 'FORGOT
 export function LoginPage() {
   const navigate = useNavigate();
   
-  // Zmieniamy boolean isLoginMode na stan widoku
+  // Stan widoku
   const [view, setView] = useState<ViewState>('LOGIN');
   
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -35,17 +35,17 @@ export function LoginPage() {
   // Pokaż/Ukryj hasło
   const [showPassword, setShowPassword] = useState(false); 
 
-  // Dane do logowania/rejestracji
+  // Dane do logowania/rejestracji - DODANO adminCode
   const [authData, setAuthData] = useState({
-    firstName: '', lastName: '', email: '', password: ''
+    firstName: '', lastName: '', email: '', password: '', adminCode: '' 
   });
 
-  // NOWE: Dane do resetu hasła
+  // Dane do resetu hasła
   const [resetData, setResetData] = useState({
     code: '', newPassword: '', confirmPassword: ''
   });
 
-  // Dane pracownika (Onboarding - BEZ ZMIAN)
+  // Dane pracownika (Onboarding)
   const [empData, setEmpData] = useState({
     position: 'Kierownik / Administrator',
     hiredAt: new Date().toISOString().split('T')[0],
@@ -69,6 +69,13 @@ export function LoginPage() {
     }
 
     if (view === 'REGISTER') {
+        // --- NOWA WALIDACJA KODU ---
+        if (!authData.adminCode) {
+            toast.error('Wymagany jest kod autoryzacji od administratora.');
+            return false;
+        }
+        // ---------------------------
+
         if (authData.password.length < 8) {
             toast.error('Hasło musi mieć co najmniej 8 znaków.');
             return false;
@@ -99,9 +106,10 @@ export function LoginPage() {
         toast.success(`Witaj ponownie, ${res.data.user.firstName}!`);
         navigate('/');
       } else if (view === 'REGISTER') {
+        // authData zawiera teraz adminCode
         const res = await axios.post('http://localhost:3000/api/register', authData);
         setCreatedUserId(res.data.userId);
-        toast.success('Konto utworzone! Teraz uzupełnij swój profil pracowniczy.');
+        toast.success('Konto Managera utworzone! Uzupełnij profil.');
         setShowOnboarding(true);
       }
     } catch (error: any) {
@@ -111,9 +119,7 @@ export function LoginPage() {
     }
   };
 
-  // --- NOWE: LOGIKA RESETOWANIA HASŁA ---
-  
-  // 1. Wyślij kod na email
+  // --- LOGIKA RESETOWANIA HASŁA ---
   const sendResetCode = async (e: React.FormEvent) => {
       e.preventDefault();
       setLoading(true);
@@ -126,14 +132,12 @@ export function LoginPage() {
       } finally { setLoading(false); }
   };
 
-  // 2. Weryfikacja wizualna kodu (przejście dalej)
   const verifyCodeStep = (e: React.FormEvent) => {
       e.preventDefault();
       if (resetData.code.length < 6) return toast.error('Kod musi mieć 6 cyfr.');
       setView('FORGOT_NEW_PASS');
   };
 
-  // 3. Ustaw nowe hasło
   const resetPasswordFinal = async (e: React.FormEvent) => {
       e.preventDefault();
       if (resetData.newPassword !== resetData.confirmPassword) return toast.error('Hasła nie są identyczne.');
@@ -151,16 +155,18 @@ export function LoginPage() {
           toast.success('Hasło zostało zmienione! Zaloguj się.');
           setView('LOGIN');
           setResetData({ code: '', newPassword: '', confirmPassword: '' });
-          setAuthData(prev => ({ ...prev, password: '' })); // Czyścimy stare hasło
+          setAuthData(prev => ({ ...prev, password: '' })); 
       } catch (error: any) {
           toast.error(error.response?.data?.error || 'Błąd resetowania hasła.');
       } finally { setLoading(false); }
   };
 
 
-  // --- LOGIKA ONBOARDINGU (TWOJA ORYGINALNA) ---
+ // --- ZMODYFIKOWANA FUNKCJA ONBOARDINGU ---
   const handleOnboardingSubmit = async (skipped: boolean = false) => {
     setLoading(true);
+    
+    // 1. NAJPIERW TWORZYMY PROFIL (ONBOARDING)
     try {
         await axios.post('http://localhost:3000/api/employees/onboarding', {
             userId: createdUserId,
@@ -176,21 +182,36 @@ export function LoginPage() {
             skipped: skipped
         });
 
-        if (skipped) {
-            toast.warning('Profil utworzony z zaległymi datami. Uzupełnij je w panelu!');
-        } else {
-            toast.success('Profil pracowniczy skonfigurowany!');
-        }
+        if (skipped) toast.warning('Profil utworzony (dane do uzupełnienia).');
+        else toast.success('Profil skonfigurowany pomyślnie!');
 
+    } catch (error: any) {
+        console.error("Błąd onboardingu:", error);
+        toast.error(error.response?.data?.error || 'Błąd zapisu profilu pracownika.');
+        setLoading(false);
+        return; // Jeśli onboarding padł, przerywamy i nie próbujemy logować
+    }
+
+    // 2. JEŚLI PROFIL SIĘ UDAŁ -> PRÓBUJEMY SIĘ ZALOGOWAĆ
+    try {
         const loginRes = await axios.post('http://localhost:3000/api/login', {
-            email: authData.email, password: authData.password
+            email: authData.email, 
+            password: authData.password
         });
+        
         localStorage.setItem('token', loginRes.data.token);
         localStorage.setItem('user', JSON.stringify(loginRes.data.user));
+        toast.success(`Zalogowano jako ${loginRes.data.user.firstName}`);
         navigate('/');
 
-    } catch (error) {
-        toast.error('Błąd konfiguracji profilu.');
+    } catch (error: any) {
+        // Jeśli tu trafiłeś, to znaczy że profil JEST w bazie, ale logowanie nie wyszło.
+        console.error("Błąd auto-logowania:", error);
+        toast.error('Profil utworzony, ale wystąpił błąd logowania. Zaloguj się ręcznie.');
+        
+        // Zamiast zostać na ekranie onboardingu (który już wysłał dane!), wracamy do logowania
+        setShowOnboarding(false);
+        setView('LOGIN');
     } finally {
         setLoading(false);
     }
@@ -200,7 +221,7 @@ export function LoginPage() {
   // RENDEROWANIE (WIDOKI)
   // =========================================================
 
-  // WIDOK 1: ONBOARDING (PRIORYTETOWY JEŚLI showOnboarding === true)
+  // WIDOK 1: ONBOARDING
   if (showOnboarding) {
     return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -272,12 +293,12 @@ export function LoginPage() {
     );
   }
 
-  // WIDOK 2: GŁÓWNA KARTA LOGOWANIA / REJESTRACJI / ODZYSKIWANIA
+  // WIDOK 2: GŁÓWNA KARTA
   return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="bg-white w-full max-w-md rounded-3xl shadow-xl border border-slate-100 overflow-hidden transition-all duration-300">
           
-          {/* NAGŁÓWEK ZMIENNY W ZALEŻNOŚCI OD WIDOKU */}
+          {/* NAGŁÓWEK */}
           <div className={`p-8 text-center relative overflow-hidden ${view.startsWith('FORGOT') ? 'bg-orange-500' : 'bg-blue-600'}`}>
             <div className="relative z-10">
               <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm text-white border-2 border-white/30">
@@ -294,13 +315,12 @@ export function LoginPage() {
               </h1>
               <p className="text-white/90 mt-2 text-sm font-medium">
                   {view === 'LOGIN' ? 'Dostęp do panelu zarządzania' : 
-                   view === 'REGISTER' ? 'Zarejestruj pierwszego administratora' :
+                   view === 'REGISTER' ? 'Rejestracja Managera (Wymagany Kod)' :
                    view === 'FORGOT_EMAIL' ? 'Podaj e-mail, aby otrzymać kod' :
                    view === 'FORGOT_CODE' ? 'Wpisz 6-cyfrowy kod z maila' :
                    'Ustaw silne, bezpieczne hasło'}
               </p>
             </div>
-            {/* Tło ozdobne */}
             <div className="absolute top-[-50%] left-[-20%] w-64 h-64 bg-white/10 rounded-full blur-2xl"></div>
             <div className="absolute bottom-[-50%] right-[-20%] w-64 h-64 bg-white/10 rounded-full blur-2xl"></div>
           </div>
@@ -311,17 +331,30 @@ export function LoginPage() {
             {(view === 'LOGIN' || view === 'REGISTER') && (
                 <form onSubmit={handleAuthSubmit} className="space-y-5">
                     {view === 'REGISTER' && (
-                        <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Imię</label>
-                                <input type="text" required placeholder="Jan" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-300" 
-                                    value={authData.firstName} onChange={e => handleNameInput(e, 'firstName')} />
+                        <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Imię</label>
+                                    <input type="text" required placeholder="Jan" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-300" 
+                                        value={authData.firstName} onChange={e => handleNameInput(e, 'firstName')} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nazwisko</label>
+                                    <input type="text" required placeholder="Kowalski" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-300" 
+                                        value={authData.lastName} onChange={e => handleNameInput(e, 'lastName')} />
+                                </div>
                             </div>
+
+                            {/* --- NOWE POLE: KOD AUTORYZACJI (DODANO) --- */}
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nazwisko</label>
-                                <input type="text" required placeholder="Kowalski" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-300" 
-                                    value={authData.lastName} onChange={e => handleNameInput(e, 'lastName')} />
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1 text-blue-600">Kod Autoryzacji (Manager)</label>
+                                <div className="relative">
+                                    <input type="text" required placeholder="Np. MANAGER2024" className="w-full p-3 pl-11 bg-blue-50 border border-blue-200 rounded-xl focus:outline-none focus:border-blue-500 text-blue-900 font-bold placeholder:text-blue-300" 
+                                        value={authData.adminCode} onChange={e => setAuthData({...authData, adminCode: e.target.value})} />
+                                    <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 text-blue-400" size={20} />
+                                </div>
                             </div>
+                            {/* ------------------------------------------- */}
                         </div>
                     )}
                     <div>
@@ -357,12 +390,12 @@ export function LoginPage() {
                     </div>
 
                     <button disabled={loading} type="submit" className="w-full bg-blue-600 text-white font-bold h-12 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 group disabled:opacity-70">
-                        {loading ? 'Przetwarzanie...' : (view === 'LOGIN' ? 'Zaloguj się' : 'Zarejestruj się')} {!loading && <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform"/>}
+                        {loading ? 'Przetwarzanie...' : (view === 'LOGIN' ? 'Zaloguj się' : 'Zarejestruj Managera')} {!loading && <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform"/>}
                     </button>
                 </form>
             )}
 
-            {/* --- FORMULARZ ODZYSKIWANIA HASŁA: KROK 1 (EMAIL) --- */}
+            {/* --- FORMULARZE ODZYSKIWANIA (BEZ ZMIAN) --- */}
             {view === 'FORGOT_EMAIL' && (
                 <form onSubmit={sendResetCode} className="space-y-5 animate-in slide-in-from-right">
                     <div>
@@ -382,7 +415,6 @@ export function LoginPage() {
                 </form>
             )}
 
-            {/* --- FORMULARZ ODZYSKIWANIA: KROK 2 (KOD) --- */}
             {view === 'FORGOT_CODE' && (
                 <form onSubmit={verifyCodeStep} className="space-y-5 animate-in slide-in-from-right">
                     <div>
@@ -399,7 +431,6 @@ export function LoginPage() {
                 </form>
             )}
 
-            {/* --- FORMULARZ ODZYSKIWANIA: KROK 3 (NOWE HASŁO) --- */}
             {view === 'FORGOT_NEW_PASS' && (
                 <form onSubmit={resetPasswordFinal} className="space-y-5 animate-in slide-in-from-right">
                     <div>
@@ -418,13 +449,13 @@ export function LoginPage() {
                 </form>
             )}
 
-            {/* PRZEŁĄCZNIK LOGIN / REJESTRACJA (Tylko gdy nie resetujemy hasła) */}
+            {/* PRZEŁĄCZNIK LOGIN / REJESTRACJA */}
             {(view === 'LOGIN' || view === 'REGISTER') && (
                 <div className="mt-6 text-center">
                     <p className="text-sm text-slate-500">
-                        {view === 'LOGIN' ? 'Nie masz konta?' : 'Masz już konto?'} 
+                        {view === 'LOGIN' ? 'Jesteś Managerem?' : 'Masz już konto?'} 
                         <button onClick={() => setView(view === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="ml-2 font-bold text-blue-600 hover:text-blue-700 hover:underline">
-                            {view === 'LOGIN' ? 'Zarejestruj się' : 'Zaloguj się'}
+                            {view === 'LOGIN' ? 'Zarejestruj się kodem' : 'Zaloguj się'}
                         </button>
                     </p>
                 </div>

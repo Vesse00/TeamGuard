@@ -223,9 +223,13 @@ export function EmployeeDetails() {
             </div>
           </div>
           <div className="flex gap-3">
-            <Link to={`/employees/${employee.id}/edit`} className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-4 py-2.5 rounded-lg font-medium shadow-sm transition-colors h-full flex items-center gap-2 decoration-0"><Pencil size={16}/> Edytuj Profil / Uprawnienia</Link>
-            {!employee.isSystemAdmin && (
-              <button onClick={handleDeleteClick} className="bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 hover:border-red-200 p-2.5 rounded-lg transition-colors shadow-sm" title="Usuń pracownika"><Trash2 size={20} /></button>
+            {isAdmin && (
+              <>
+              <Link to={`/employees/${employee.id}/edit`} className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-4 py-2.5 rounded-lg font-medium shadow-sm transition-colors h-full flex items-center gap-2 decoration-0"><Pencil size={16}/> Edytuj Profil / Uprawnienia</Link>
+              {!employee.isSystemAdmin && (
+                <button onClick={handleDeleteClick} className="bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 hover:border-red-200 p-2.5 rounded-lg transition-colors shadow-sm" title="Usuń pracownika"><Trash2 size={20} /></button>
+              )}
+              </>
             )}
           </div>
         </div>
@@ -261,6 +265,7 @@ export function EmployeeDetails() {
                                 {style.formattedTime}
                             </span>
                             zostało
+                            
                         </div>
                     </div>
                  )}

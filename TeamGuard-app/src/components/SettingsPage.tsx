@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Save, User, Lock, Bell, Shield, Calendar, Clock, Play, Mail, FileText, Check, Eye, EyeOff } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import axios from 'axios';
 
@@ -14,6 +14,9 @@ const HOURS = Array.from({ length: 17 }, (_, i) => `${i + 6 < 10 ? '0' : ''}${i 
 export function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState<number | null>(null);
+
+  // 1. SPRAWDZAMY ROLĘ UŻYTKOWNIKA
+  const [isAdmin, setIsAdmin] = useState(false);
   
   // Stany dla przycisków testowych
   const [testingAlert, setTestingAlert] = useState(false);
@@ -37,8 +40,11 @@ export function SettingsPage() {
   // 1. POBIERANIE DANYCH
   useEffect(() => {
     const userStr = localStorage.getItem('user');
+
+
     if (userStr) {
       const user = JSON.parse(userStr);
+      setIsAdmin(user.role === 'ADMIN');
       setUserId(user.id);
       setProfile(prev => ({ ...prev, firstName: user.firstName, lastName: user.lastName, email: user.email }));
 
@@ -198,10 +204,13 @@ export function SettingsPage() {
       <div className="space-y-6">
 
         {/* --- DANE OSOBOWE --- */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2"><User size={18} className="text-blue-600"/><h2 className="font-bold text-slate-700">Dane Osobowe</h2></div>
+        {isAdmin && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">                
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2"><User size={18} className="text-blue-600"/><h2 className="font-bold text-slate-700">Dane Osobowe</h2></div>
             <div className="p-6"><form onSubmit={handleSaveProfile} className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Imię</label><input type="text" className="w-full p-2.5 border border-slate-300 rounded-lg outline-none focus:border-blue-500" value={profile.firstName} onChange={e => setProfile({...profile, firstName: e.target.value})} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nazwisko</label><input type="text" className="w-full p-2.5 border border-slate-300 rounded-lg outline-none focus:border-blue-500" value={profile.lastName} onChange={e => setProfile({...profile, lastName: e.target.value})} /></div><div className="md:col-span-2"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label><input type="email" className="w-full p-2.5 border border-slate-300 rounded-lg outline-none focus:border-blue-500" value={profile.email} onChange={e => setProfile({...profile, email: e.target.value})} /></div><div className="md:col-span-2 flex justify-end"><button disabled={loading} type="submit" className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-70"><Save size={18} /> {loading ? 'Zapisywanie...' : 'Zapisz Zmiany'}</button></div></form></div>
         </div>
+        )}
+        
 
         {/* --- ZMIANA HASŁA (Z IKONKĄ OKA) --- */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -278,6 +287,7 @@ export function SettingsPage() {
             </div>
         </div>
 
+        
         {/* --- POWIADOMIENIA --- */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
@@ -336,8 +346,7 @@ export function SettingsPage() {
                         </div>
                     )}
                 </div>
-
-                <hr className="border-slate-100"/>
+                    <hr className="border-slate-100"/>
 
                 {/* RAPORT TYGODNIOWY */}
                 <div>
@@ -354,7 +363,6 @@ export function SettingsPage() {
                             <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:bg-green-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
                         </label>
                     </div>
-
                     {reportConfig.enabled && (
                         <div className="ml-12 bg-green-50/50 rounded-xl p-5 border border-green-100 animate-in slide-in-from-top-2 flex flex-wrap gap-4 items-end justify-between">
                             <div className="flex gap-4">
@@ -377,16 +385,16 @@ export function SettingsPage() {
                         </div>
                     )}
                 </div>
-
             </div>
+        
         </div>
-
-         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 flex items-start gap-4">
+        
+        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 flex items-start gap-4">
             <div className="p-3 bg-blue-100 text-blue-600 rounded-full"><Shield size={24} /></div>
             <div><h3 className="text-lg font-bold text-blue-900">Rola Administratora</h3><p className="text-sm text-blue-700 mt-1">Masz pełne uprawnienia do zarządzania pracownikami, dokumentami oraz konfiguracją systemu.</p></div>
-         </div>
+        </div>
+        </div>
 
-      </div>
     </div>
   );
 }

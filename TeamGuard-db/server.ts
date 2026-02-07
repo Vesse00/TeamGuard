@@ -22,6 +22,9 @@ if (!SECRET_KEY) {
   process.exit(1);
 }
 
+// --- KOD DLA MANAGERÓW (Możesz to przenieść do .env) ---
+const MANAGER_REGISTRATION_CODE = process.env.MANAGER_CODE || 'MANAGER2024';
+
 
 // ============================================================
 // KONFIGURACJA EMAIL (NODEMAILER)
@@ -400,7 +403,11 @@ app.delete('/api/compliance/:id', async (req, res) => {
 
 // --- REJESTRACJA ---
 app.post('/api/register', async (req, res) => {
-  const { firstName, lastName, email, password } = req.body;
+  const { firstName, lastName, email, password, adminCode } = req.body;
+
+  if (adminCode !== MANAGER_REGISTRATION_CODE) {
+      return res.status(403).json({ error: 'Błędny kod autoryzacji dla Managera.' });
+  }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) return res.status(400).json({ error: 'Nieprawidłowy format adresu email.' });
@@ -416,8 +423,15 @@ app.post('/api/register', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { firstName, lastName, email, password: hashedPassword }
-    });
+      data: { 
+        firstName,
+        lastName,
+        email,
+        password: hashedPassword,
+        role: 'ADMIN', // <--- Nadajemy uprawnienia Admina
+        inviteToken: null // Konto od razu aktywne }
+    }
+  });
 
     res.json({ message: 'Użytkownik utworzony pomyślnie', userId: user.id });
   } catch (error) {
@@ -429,10 +443,12 @@ app.post('/api/register', async (req, res) => {
 // --- LOGOWANIE ---
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
+  // 1. Logujemy, że przyszło zapytanie (nie logujemy hasła dla bezpieczeństwa!)
+  console.log(`[LOGIN DEBUG] Próba logowania dla: ${email}`);
   try {
     const user = await prisma.user.findUnique({ 
         where: { email },
-        include: { employees: true } // Pobieramy powiązanego pracownika
+        include: { employee: true } // Pobieramy powiązanego pracownika
     });
     
     if (!user) return res.status(400).json({ error: 'Nieprawidłowy email lub hasło' });
@@ -446,7 +462,7 @@ app.post('/api/login', async (req, res) => {
     const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY as string, { expiresIn: '8h' });
     
     // Znajdź ID pracownika powiązanego z tym userem (do linku "Mój Profil")
-    const employeeId = user.employees.length > 0 ? user.employees[0].id : null;
+    const employeeId = user.employee ? user.employee.id : null;
 
     res.json({ 
         token, 
@@ -486,7 +502,7 @@ app.post('/api/auth/set-password', async (req, res) => {
 
 // --- ONBOARDING ADMINA ---
 app.post('/api/employees/onboarding', async (req, res) => {
-  const { userId, firstName, lastName, email, position, hiredAt, bhpDate, medicalDate, bhpDuration, medicalDuration, skipped } = req.body;
+  const { userId, firstName, lastName, email, position, hiredAt, bhpDate, medicalDate, bhpDuration, medicalDuration, skipped, adminId } = req.body;
   
   const getInitials = (f: string, l: string) => `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
   const yesterday = new Date();
@@ -514,14 +530,14 @@ app.post('/api/employees/onboarding', async (req, res) => {
              { 
                name: 'Szkolenie BHP', type: 'MANDATORY', 
                status: skipped ? 'EXPIRED' : 'VALID',
-               issueDate: skipped ? yesterday : new Date(bhpDate || new Date()), 
+               issueDate: (skipped || !bhpDate) ? yesterday : new Date(bhpDate || new Date()), 
                expiryDate: skipped ? yesterday : calculateExpiry(bhpDate, bhpDuration || '5'),
                duration: bhpDuration || '5' 
              },
              { 
                name: 'Badania Lekarskie', type: 'MANDATORY', 
                status: skipped ? 'EXPIRED' : 'VALID',
-               issueDate: skipped ? yesterday : new Date(medicalDate || new Date()),
+               issueDate: (skipped || !medicalDate) ? yesterday : new Date(medicalDate || new Date()),
                expiryDate: skipped ? yesterday : calculateExpiry(medicalDate, medicalDuration || '2'),
                duration: medicalDuration || '2'
              }

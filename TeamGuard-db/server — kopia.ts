@@ -268,70 +268,91 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// --- ENDPOINT: ONBOARDING ADMINA (KROK 2) ---
+// --- ONBOARDING ADMINA (Z LOGOWANIEM BŁĘDÓW) ---
 app.post('/api/employees/onboarding', async (req, res) => {
-  const { userId, firstName, lastName, email, position, hiredAt, bhpDate, medicalDate, bhpDuration, medicalDuration, skipped } = req.body;
-  
-  const getInitials = (f: string, l: string) => `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
-
-  // Ustawiamy datę na "wczoraj" dla statusu EXPIRED
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  const calculateExpiry = (startStr: string, years: string) => {
-     if (!startStr) return yesterday;
-     const date = new Date(startStr);
-     if (years === '0.5') date.setMonth(date.getMonth() + 6);
-     else date.setFullYear(date.getFullYear() + parseInt(years));
-     return date;
-  };
-
   try {
+    const { userId, firstName, lastName, email, position, hiredAt, bhpDate, medicalDate, bhpDuration, medicalDuration, skipped } = req.body;
+    
+    console.log("Onboarding request:", { userId, email, skipped }); // LOGOWANIE DANYCH WEJŚCIOWYCH
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Brak ID użytkownika (userId). Zaloguj się ponownie.' });
+    }
+
+    const getInitials = (f: string, l: string) => `${f?.charAt(0) || ''}${l?.charAt(0) || ''}`.toUpperCase();
+    
+    // Data wczorajsza dla pominiętych/wygasłych
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    // Bezpieczna funkcja daty
+    const safeDate = (dateStr: string | undefined) => {
+        if (!dateStr) return yesterday;
+        const d = new Date(dateStr);
+        return isNaN(d.getTime()) ? yesterday : d;
+    };
+
+    const calculateExpiry = (startStr: string, years: string) => {
+        if (!startStr) return yesterday;
+        const date = new Date(startStr);
+        if (isNaN(date.getTime())) return yesterday; // Zabezpieczenie przed złą datą
+
+        if (years === '0.5') date.setMonth(date.getMonth() + 6);
+        else date.setFullYear(date.getFullYear() + parseInt(years || '0'));
+        
+        return date;
+    };
+
+    // Obliczamy daty
+    const issueBhp = (skipped || !bhpDate) ? yesterday : safeDate(bhpDate);
+    const expiryBhp = skipped ? yesterday : calculateExpiry(bhpDate, bhpDuration || '5');
+    
+    const issueMed = (skipped || !medicalDate) ? yesterday : safeDate(medicalDate);
+    const expiryMed = skipped ? yesterday : calculateExpiry(medicalDate, medicalDuration || '2');
+
     const newEmployee = await prisma.employee.create({
       data: {
-        firstName, 
-        lastName, 
+        firstName: firstName || '',
+        lastName: lastName || '',
+        email: email,
         position: position || 'Administrator',
-        email,
-        hiredAt: hiredAt ? new Date(hiredAt) : new Date(),
+        hiredAt: hiredAt ? safeDate(hiredAt) : new Date(),
         avatarInitials: getInitials(firstName, lastName),
         isSystemAdmin: true,
-        userId: userId,
-        
+        userId: Number(userId), // Upewniamy się, że to liczba
         compliance: {
           create: [
              { 
-               name: 'Szkolenie BHP', 
-               type: 'MANDATORY', 
+               name: 'Szkolenie BHP', type: 'MANDATORY', 
                status: skipped ? 'EXPIRED' : 'VALID',
-               
-               // Daty ustawiamy na wczoraj, żeby wymusić alert "Po terminie"
-               issueDate: skipped ? yesterday : new Date(bhpDate || new Date()), 
-               expiryDate: skipped ? yesterday : calculateExpiry(bhpDate, bhpDuration || '5'),
-
-               // WAŻNE: Tu była zmiana. Zapisujemy domyślny okres (np. 5 lat) nawet jak pominięto!
-               // Dzięki temu przy odnowieniu system wie, na ile odnowić.
+               issueDate: issueBhp, 
+               expiryDate: expiryBhp,
                duration: bhpDuration || '5' 
              },
              { 
-               name: 'Badania Lekarskie', 
-               type: 'MANDATORY', 
+               name: 'Badania Lekarskie', type: 'MANDATORY', 
                status: skipped ? 'EXPIRED' : 'VALID',
-               
-               issueDate: skipped ? yesterday : new Date(medicalDate || new Date()),
-               expiryDate: skipped ? yesterday : calculateExpiry(medicalDate, medicalDuration || '2'),
-
-               // WAŻNE: Tutaj też zapisujemy właściwy okres (np. 2 lata), a nie '0'.
+               issueDate: issueMed,
+               expiryDate: expiryMed,
                duration: medicalDuration || '2'
              }
           ]
         }
       }
     });
+
     res.json(newEmployee);
-  } catch (error) {
-    console.error("Błąd onboardingu:", error);
-    res.status(500).json({ error: 'Błąd tworzenia profilu pracownika' });
+
+  } catch (error: any) {
+    // TO POKAŻE PRAWDZIWĄ PRZYCZYNĘ W TERMINALU:
+    console.error("❌ BŁĄD ONBOARDINGU:", error.message || error);
+    
+    // Sprawdźmy czy to błąd unikalności (np. userId już zajęte)
+    if (error.code === 'P2002') {
+        return res.status(409).json({ error: 'Ten użytkownik ma już profil pracownika.' });
+    }
+    
+    res.status(500).json({ error: 'Błąd tworzenia profilu. Sprawdź konsolę serwera.' });
   }
 });
 
