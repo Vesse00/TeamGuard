@@ -1,0 +1,961 @@
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { PrismaClient } from '@prisma/client';
+import cron from 'node-cron';
+import nodemailer from 'nodemailer';
+import crypto from 'crypto';
+
+
+const prisma = new PrismaClient();
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+const SECRET_KEY = process.env.JWT_SECRET;
+
+if (!SECRET_KEY) {
+  console.error("BŁĄD KRYTYCZNY: Brak zmiennej JWT_SECRET w pliku .env!");
+  process.exit(1);
+}
+
+
+// ============================================================
+// KONFIGURACJA EMAIL (NODEMAILER)
+// ============================================================
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    // 👇👇👇 PAMIĘTAJ O SWOICH DANYCH 👇👇👇
+    user: 'none.contactpl@gmail.com', 
+    pass: 'kkno scpg qjpi uydh' // Użyj hasła aplikacji, jeśli masz 2FA   
+  }
+});
+
+// --- FUNKCJA POMOCNICZA: Logowanie i Powiadamianie WSZYSTKICH ---
+async function logAndNotifyAll(adminId: number, action: string, message: string, link: string | null = null, targetId: number | null = null) {
+    try {
+        // 1. Pobierz dane autora akcji
+        const admin = await prisma.user.findUnique({ where: { id: adminId } });
+        const adminName = admin ? `${admin.firstName} ${admin.lastName}` : "System";
+
+        // 2. Zapisz w historii (AuditLog)
+        await prisma.auditLog.create({
+            data: {
+                action,
+                details: message,
+                performedBy: adminName,
+                targetId: targetId
+            }
+        });
+
+        // 3. Wyślij powiadomienie do WSZYSTKICH użytkowników
+        const notificationMessage = `${adminName}: ${message}`;
+        const allUsers = await prisma.user.findMany();
+        
+        // Tworzymy powiadomienia dla każdego (używając Promise.all dla szybkości)
+        await Promise.all(allUsers.map(user => {
+            return prisma.notification.create({
+                data: {
+                    userId: user.id,
+                    title: action, // np. "Aktualizacja Uprawnień"
+                    message: notificationMessage, // np. "Jan Kowalski odnowił..."
+                    type: "INFO",
+                    link: link
+                }
+            });
+        }));
+
+    } catch (e) {
+        console.error("Błąd logowania akcji:", e);
+    }
+}
+
+// ============================================================
+// 2. LOGIKA WYSYŁANIA MAILA (TYLKO PROBLEMY)
+// ============================================================
+// Funkcja sprawdzająca alerty (z obsługą trybu testowego)
+async function checkAlertsForUser(userId: number, isTest: boolean = false) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.email) return;
+
+    // Pobierz dane
+    const employees = await prisma.employee.findMany({ include: { compliance: true } });
+    let expired = 0;
+    let warning = 0;
+    const today = new Date();
+
+    employees.forEach(emp => {
+        emp.compliance.forEach(c => {
+            const expiry = new Date(c.expiryDate);
+            const diffTime = expiry.getTime() - today.getTime();
+            const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (daysLeft <= 0) expired++;
+            else if (daysLeft <= 30) warning++;
+        });
+    });
+
+    // Decyzja o wysłaniu
+    const hasIssues = expired > 0 || warning > 0;
+
+    // Jeśli to automat (nie test) i brak problemów -> STOP
+    if (!isTest && !hasIssues) {
+        console.log(`[ALERT] ${user.email} - Czysto. Nie wysyłam.`);
+        return;
+    }
+
+    console.log(`[ALERT] Wysyłam maila do ${user.email} (Zaległe: ${expired}, Test: ${isTest})`);
+
+    // Treść maila
+    let subject = '';
+    let color = '';
+    let title = '';
+    let message = '';
+
+    if (expired > 0) {
+        subject = `🚨 ALERT BHP: Masz ${expired} zaległych uprawnień!`;
+        color = '#ef4444'; // Czerwony
+        title = 'WYMAGANA INTERWENCJA';
+        message = `Wykryto uprawnienia <strong>po terminie</strong> dla <strong>${expired}</strong> pracowników.<br>Wymagane działanie.`;
+    } else if (warning > 0) {
+        subject = `⚠️ OSTRZEŻENIE BHP: ${warning} uprawnień wygasa.`;
+        color = '#f97316'; // Pomarańczowy
+        title = 'ZBLIŻAJĄ SIĘ TERMINY';
+        message = `Uprawnienia kończą się w ciągu 30 dni dla <strong>${warning}</strong> pracowników.`;
+    } else {
+        // Tylko dla testu gdy jest zielono
+        subject = `✅ TEST ALERTU: System działa poprawnie`;
+        color = '#22c55e'; // Zielony
+        title = 'TEST POŁĄCZENIA';
+        message = `To jest wiadomość testowa. Twój system powiadomień działa poprawnie.<br>W bazie nie ma obecnie zaległości.`;
+    }
+
+    const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;">
+            <div style="background-color: ${color}; padding: 25px; text-align: center;">
+                <h1 style="color: white; margin: 0; font-size: 22px;">${title}</h1>
+            </div>
+            <div style="padding: 30px;">
+                <p>Cześć <strong>${user.firstName || 'Administratorze'}</strong>,</p>
+                <p>${message}</p>
+                ${hasIssues ? `<p>🔴 Zaległe: ${expired}<br>🟠 Wygasające: ${warning}</p>` : ''}
+                <br>
+                <a href="http://localhost:5173" style="background-color: #0f172a; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Otwórz Panel</a>
+            </div>
+        </div>
+    `;
+
+    try {
+        await transporter.sendMail({
+            from: '"TeamGuard" <noreply@teamguard.com>',
+            to: user.email,
+            subject: subject,
+            html: htmlContent
+        });
+    } catch (e) { console.error("Błąd maila:", e); }
+}
+
+// --- ALERT TESTOWY (Fix błędu połączenia) ---
+app.post('/api/alerts/test-now', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        // Wywołujemy z flagą TRUE (wymuś wysłanie)
+        await checkAlertsForUser(Number(userId), true);
+        res.json({ success: true });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Błąd serwera' });
+    }
+});
+
+// --- GET: Szczegóły pracownika ---
+app.get('/api/employees/:id', async (req, res) => {
+  const { id } = req.params;
+  const employee = await prisma.employee.findUnique({
+    where: { id: Number(id) },
+    include: { compliance: true }
+  });
+  res.json(employee);
+});
+
+// --- POST: Dodaj pracownika (Z LOGOWANIEM) ---
+app.post('/api/employees', async (req, res) => {
+  const { firstName, lastName, position, email, hiredAt, bhpDate, medicalDate, adminId } = req.body;
+  
+  // Helpery (bez zmian)
+  const getInitials = (f: string, l: string) => `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
+  const calculateExpiry = (start: Date, years: string) => {
+     const date = new Date(start);
+     if (years === '0.5') date.setMonth(date.getMonth() + 6);
+     else date.setFullYear(date.getFullYear() + parseInt(years));
+     return date;
+  };
+
+  try {
+    // 1. Sprawdź czy User już istnieje
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) return res.status(400).json({ error: 'Użytkownik z tym mailem już istnieje w systemie.' });
+
+    // 2. Generuj token zaproszenia
+    const inviteToken = crypto.randomBytes(32).toString('hex');
+
+    // 3. Stwórz USERA (z rolą USER i tokenem)
+    const newUser = await prisma.user.create({
+        data: {
+            firstName,
+            lastName,
+            email,
+            password: await bcrypt.hash(crypto.randomBytes(10).toString('hex'), 10), // Tymczasowe losowe hasło
+            role: 'USER',
+            inviteToken: inviteToken
+        }
+    });
+
+    // 4. Stwórz PRACOWNIKA (połączonego z Userem)
+    const newEmployee = await prisma.employee.create({
+      data: {
+        firstName, lastName, position, email,
+        hiredAt: new Date(hiredAt),
+        avatarInitials: getInitials(firstName, lastName),
+        userId: newUser.id, // <--- ŁĄCZYMY KONTA
+        compliance: {
+            create: [
+                { name: 'Szkolenie BHP', type: 'MANDATORY', status: 'VALID', issueDate: new Date(hiredAt), duration: '0.5', expiryDate: calculateExpiry(new Date(hiredAt), '0.5') },
+                { name: 'Badania Lekarskie', type: 'MANDATORY', status: 'VALID', issueDate: new Date(hiredAt), duration: '2', expiryDate: calculateExpiry(new Date(hiredAt), '2') }
+            ]
+        }
+      }
+    });
+
+    // 5. Wyślij Email z zaproszeniem
+    const inviteLink = `http://localhost:5173/set-password?token=${inviteToken}`;
+    const htmlContent = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center; border: 1px solid #eee; border-radius: 10px;">
+            <h2 style="color: #2563eb;">Witaj w TeamGuard!</h2>
+            <p>Administrator utworzył dla Ciebie konto pracownicze.</p>
+            <p>Kliknij poniższy przycisk, aby ustawić hasło i się zalogować:</p>
+            <a href="${inviteLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin: 20px 0;">Aktywuj Konto</a>
+            <p style="color: #64748b; font-size: 12px;">Link jest jednorazowy.</p>
+        </div>
+    `;
+
+    await transporter.sendMail({
+        from: '"TeamGuard" <noreply@teamguard.com>',
+        to: email,
+        subject: '✉️ Zaproszenie do systemu TeamGuard',
+        html: htmlContent
+    });
+
+    // 6. Logowanie akcji (dla Admina)
+    if (adminId) {
+        const msg = `Dodano pracownika i wysłano zaproszenie: ${firstName} ${lastName}.`;
+        await logAndNotifyAll(Number(adminId), "Nowy Pracownik", msg, `/employees/${newEmployee.id}`, newEmployee.id);
+    }
+
+    res.json(newEmployee);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Błąd tworzenia konta pracownika' });
+  }
+});
+
+// --- PUT: Edycja danych pracownika ---
+app.put('/api/employees/:id', async (req, res) => {
+  const { id } = req.params;
+  const { firstName, lastName, position, email, hiredAt } = req.body;
+  try {
+    const updated = await prisma.employee.update({
+      where: { id: Number(id) },
+      data: { firstName, lastName, position, email, hiredAt: new Date(hiredAt) }
+    });
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd aktualizacji' });
+  }
+});
+
+// --- DELETE: Usuń pracownika (Z blokadą Admina) ---
+app.delete('/api/employees/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const emp = await prisma.employee.findUnique({ where: { id: Number(id) } });
+    
+    if (emp?.isSystemAdmin) {
+        return res.status(403).json({ error: 'Nie można usunąć konta Administratora Głównego.' });
+    }
+
+    await prisma.employee.delete({ where: { id: Number(id) } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd usuwania' });
+  }
+});
+
+app.get('/api/employees', async (req, res) => {
+  const { search } = req.query;
+  const where = search ? { OR: [{ firstName: { contains: String(search) } }, { lastName: { contains: String(search) } }] } : {};
+  
+  try {
+    const emps = await prisma.employee.findMany({ 
+        where, 
+        include: { compliance: true }, 
+        orderBy: { createdAt: 'desc' } 
+    });
+    res.json(emps);
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd pobierania listy pracowników' });
+  }
+});
+
+// ============================================================
+// ENDPOINTY: UPRAWNIENIA (COMPLIANCE)
+// ============================================================
+
+// --- POST: Dodaj uprawnienie ---
+app.post('/api/compliance', async (req, res) => {
+  const { name, expiryDate, issueDate, duration, status, employeeId, type } = req.body;
+  try {
+    const newCompliance = await prisma.complianceEvent.create({
+      data: {
+        name,
+        status: status || 'VALID',
+        type: type || 'OTHER',
+        employeeId: Number(employeeId),
+        expiryDate: new Date(expiryDate),
+        issueDate: issueDate ? new Date(issueDate) : new Date(),
+        duration: duration ? String(duration) : "1"
+      }
+    });
+    res.json(newCompliance);
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd dodawania uprawnienia' });
+  }
+});
+
+// --- PUT: Edytuj/Odnów uprawnienie (Z LOGOWANIEM) ---
+app.put('/api/compliance/:id', async (req, res) => {
+  const { id } = req.params;
+  // Dodajemy adminId do body (musimy to wysłać z frontu)
+  const { expiryDate, issueDate, duration, adminId } = req.body; 
+
+  try {
+    // 1. Pobierz stare dane (żeby wiedzieć czyje to uprawnienie)
+    const oldCompliance = await prisma.complianceEvent.findUnique({
+        where: { id: Number(id) },
+        include: { employee: true } // Pobieramy też dane pracownika
+    });
+
+    if (!oldCompliance) return res.status(404).json({ error: 'Brak uprawnienia' });
+
+    // 2. Aktualizacja
+    const updated = await prisma.complianceEvent.update({
+      where: { id: Number(id) },
+      data: {
+        expiryDate: new Date(expiryDate),
+        ...(issueDate && { issueDate: new Date(issueDate) }),
+        ...(duration && { duration: String(duration) }),
+        status: 'VALID'
+      }
+    });
+
+    // 3. LOGIKA POWIADOMIENIA (Jeśli mamy ID admina)
+    if (adminId && oldCompliance?.employee) {
+        const empName = `${oldCompliance.employee.firstName} ${oldCompliance.employee.lastName}`;
+        // Sprawdzamy czy to odnowienie (czy data się zmieniła na przyszłość)
+        const isRenewal = new Date(expiryDate) > new Date(oldCompliance.expiryDate);
+        const actionType = isRenewal ? "Odnowienie Uprawnień" : "Edycja Uprawnień";
+        const msg = `Zaktualizowano ${oldCompliance.name} dla ${empName}.`;
+        
+        await logAndNotifyAll(Number(adminId), actionType, msg, `/employees/${oldCompliance.employeeId}`, oldCompliance.employeeId);
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Błąd edycji uprawnienia' });
+  }
+});
+
+// --- DELETE: Usuń UPRAWNIENIE ---
+app.delete('/api/compliance/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.complianceEvent.delete({
+      where: { id: Number(id) }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Błąd usuwania uprawnienia:", error);
+    res.status(500).json({ error: 'Nie udało się usunąć uprawnienia' });
+  }
+});
+
+// ============================================================
+// ENDPOINTY: AUTORYZACJA (LOGIN/REGISTER/ONBOARDING)
+// ============================================================
+
+// --- REJESTRACJA ---
+app.post('/api/register', async (req, res) => {
+  const { firstName, lastName, email, password } = req.body;
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) return res.status(400).json({ error: 'Nieprawidłowy format adresu email.' });
+
+  const passwordRegex = /[!@#$%^&*(),.?":{}|<>]/; 
+  if (password.length < 8 || !passwordRegex.test(password)) {
+    return res.status(400).json({ error: 'Hasło musi mieć min. 8 znaków i znak specjalny.' });
+  }
+
+  try {
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) return res.status(400).json({ error: 'Użytkownik o tym emailu już istnieje' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: { firstName, lastName, email, password: hashedPassword }
+    });
+
+    res.json({ message: 'Użytkownik utworzony pomyślnie', userId: user.id });
+  } catch (error) {
+    console.error("Błąd rejestracji:", error);
+    res.status(500).json({ error: 'Błąd rejestracji' });
+  }
+});
+
+// --- LOGOWANIE ---
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const user = await prisma.user.findUnique({ 
+        where: { email },
+        include: { employees: true } // Pobieramy powiązanego pracownika
+    });
+    
+    if (!user) return res.status(400).json({ error: 'Nieprawidłowy email lub hasło' });
+    
+    // Obsługa konta oczekującego na akceptację zaproszenia
+    if (user.inviteToken) return res.status(400).json({ error: 'Konto nieaktywne. Sprawdź email z zaproszeniem.' });
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) return res.status(400).json({ error: 'Nieprawidłowy email lub hasło' });
+
+    const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY as string, { expiresIn: '8h' });
+    
+    // Znajdź ID pracownika powiązanego z tym userem (do linku "Mój Profil")
+    const employeeId = user.employees.length > 0 ? user.employees[0].id : null;
+
+    res.json({ 
+        token, 
+        user: { 
+            id: user.id, 
+            firstName: user.firstName, 
+            lastName: user.lastName, 
+            email: user.email,
+            role: user.role,       // <--- WAŻNE
+            employeeId: employeeId // <--- WAŻNE
+        } 
+    });
+  } catch (error) { res.status(500).json({ error: 'Błąd logowania' }); }
+});
+
+app.post('/api/auth/set-password', async (req, res) => {
+    const { token, password } = req.body;
+    try {
+        const user = await prisma.user.findFirst({ where: { inviteToken: token } });
+        if (!user) return res.status(400).json({ error: 'Nieprawidłowy lub wygasły token zaproszenia.' });
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                password: hashedPassword,
+                inviteToken: null // Kasujemy token, konto aktywne
+            }
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Błąd ustawiania hasła.' });
+    }
+});
+
+// --- ONBOARDING ADMINA ---
+app.post('/api/employees/onboarding', async (req, res) => {
+  const { userId, firstName, lastName, email, position, hiredAt, bhpDate, medicalDate, bhpDuration, medicalDuration, skipped } = req.body;
+  
+  const getInitials = (f: string, l: string) => `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const calculateExpiry = (startStr: string, years: string) => {
+     if (!startStr) return yesterday;
+     const date = new Date(startStr);
+     if (years === '0.5') date.setMonth(date.getMonth() + 6);
+     else date.setFullYear(date.getFullYear() + parseInt(years));
+     return date;
+  };
+
+  try {
+    const newEmployee = await prisma.employee.create({
+      data: {
+        firstName, lastName, email,
+        position: position || 'Administrator',
+        hiredAt: hiredAt ? new Date(hiredAt) : new Date(),
+        avatarInitials: getInitials(firstName, lastName),
+        isSystemAdmin: true,
+        userId: userId,
+        compliance: {
+          create: [
+             { 
+               name: 'Szkolenie BHP', type: 'MANDATORY', 
+               status: skipped ? 'EXPIRED' : 'VALID',
+               issueDate: skipped ? yesterday : new Date(bhpDate || new Date()), 
+               expiryDate: skipped ? yesterday : calculateExpiry(bhpDate, bhpDuration || '5'),
+               duration: bhpDuration || '5' 
+             },
+             { 
+               name: 'Badania Lekarskie', type: 'MANDATORY', 
+               status: skipped ? 'EXPIRED' : 'VALID',
+               issueDate: skipped ? yesterday : new Date(medicalDate || new Date()),
+               expiryDate: skipped ? yesterday : calculateExpiry(medicalDate, medicalDuration || '2'),
+               duration: medicalDuration || '2'
+             }
+          ]
+        }
+      }
+    });
+    res.json(newEmployee);
+  } catch (error) {
+    console.error("Błąd onboardingu:", error);
+    res.status(500).json({ error: 'Błąd tworzenia profilu pracownika' });
+  }
+});
+
+// --- NOWY ENDPOINT: Aktualizacja profilu (Imię, Nazwisko, Email) ---
+app.put('/api/users/:id/profile', async (req, res) => {
+  const { id } = req.params;
+  const { firstName, lastName, email } = req.body;
+
+  try {
+    const updatedUser = await prisma.user.update({
+      where: { id: Number(id) },
+      data: { firstName, lastName, email }
+    });
+    res.json({ success: true, user: updatedUser });
+  } catch (error) {
+    console.error("Błąd aktualizacji profilu:", error);
+    res.status(500).json({ error: 'Nie udało się zaktualizować danych w bazie.' });
+  }
+});
+
+// ============================================================
+// LOGIKA RAPORTOWANIA (NOWA FUNKCJONALNOŚĆ)
+// ============================================================
+
+interface ReportFilters {
+    status: 'ALL' | 'EXPIRED' | 'WARNING'; 
+    categories: string[]; 
+    specificTypes: string[]; 
+}
+
+// Funkcja generująca raport (Z obsługą filtrów i inwentaryzacji)
+async function generateReportForUser(userId: number, filters: ReportFilters = { status: 'ALL', categories: [], specificTypes: [] }) {
+    const userExists = await prisma.user.findUnique({ where: { id: userId } });
+    if (!userExists) return null;
+
+    const employees = await prisma.employee.findMany({ include: { compliance: true } });
+    
+    // Kontenery na dane
+    const items: any[] = []; 
+    // Statystyki do wykresów (Total, Valid, Warning, Expired)
+    const statsPerType: Record<string, { total: number, valid: number, warning: number, expired: number }> = {};
+
+    let expiredCount = 0;
+    let warningCount = 0;
+    const today = new Date();
+
+    employees.forEach(emp => {
+      if (emp.compliance) {
+          emp.compliance.forEach(c => {
+            
+            // 1. FILTROWANIE (Kategorie i Typy)
+            if (filters.categories && filters.categories.length > 0 && !filters.categories.includes(c.type)) return;
+            if (filters.specificTypes && filters.specificTypes.length > 0 && !filters.specificTypes.includes(c.name)) return;
+
+            // Obliczenia
+            const expiry = new Date(c.expiryDate);
+            const diffTime = expiry.getTime() - today.getTime();
+            const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            let currentStatus = 'VALID';
+            if (daysLeft <= 0) currentStatus = 'EXPIRED';
+            else if (daysLeft <= 30) currentStatus = 'WARNING';
+
+            // 2. FILTROWANIE (Status)
+            let include = false;
+            if (filters.status === 'ALL') include = true; // Bierzemy wszystko (nawet ważne)
+            else if (filters.status === 'EXPIRED' && currentStatus === 'EXPIRED') include = true;
+            else if (filters.status === 'WARNING' && currentStatus === 'WARNING') include = true;
+
+            if (include) {
+                // Dodaj do listy płaskiej
+                items.push({
+                    employeeName: `${emp.firstName} ${emp.lastName}`,
+                    complianceName: c.name,
+                    expiryDate: c.expiryDate.toISOString().split('T')[0],
+                    daysLeft: daysLeft,
+                    category: c.type,
+                    status: currentStatus
+                });
+
+                // Zlicz globalne liczniki (tylko problemy)
+                if (currentStatus === 'EXPIRED') expiredCount++;
+                if (currentStatus === 'WARNING') warningCount++;
+
+                // Zbieraj statystyki do wykresów (dla inwentaryzacji)
+                if (!statsPerType[c.name]) statsPerType[c.name] = { total: 0, valid: 0, warning: 0, expired: 0 };
+                statsPerType[c.name].total++;
+                
+                if (currentStatus === 'VALID') statsPerType[c.name].valid++;
+                if (currentStatus === 'WARNING') statsPerType[c.name].warning++;
+                if (currentStatus === 'EXPIRED') statsPerType[c.name].expired++;
+            }
+          });
+      }
+    });
+
+    const reportData = {
+        items: items,
+        statsPerType: statsPerType,
+        meta: {
+            filterStatus: filters.status,
+            filterCategories: filters.categories,
+            filterSpecifics: filters.specificTypes
+        }
+    };
+
+    const report = await prisma.generatedReport.create({
+      data: {
+        totalStaff: employees.length,
+        expiredCount,
+        warningCount,
+        detailsJson: JSON.stringify(reportData)
+      }
+    });
+
+    // Powiadomienie (Inny tekst dla automatu, inny dla ręcznego)
+    let notifMessage = `Raport #${report.id} jest gotowy.`;
+    // Jeśli status=ALL i brak kategorii = Cron (Automat)
+    if (filters.status === 'ALL' && (!filters.categories || filters.categories.length === 0)) {
+        notifMessage = `Raport automatyczny #${report.id} został wygenerowany.`;
+    }
+
+    await prisma.notification.create({
+      data: {
+        userId: userId,
+        title: "Raport gotowy",
+        message: notifMessage,
+        type: "REPORT",
+        link: `/reports`
+      }
+    });
+
+    return report;
+}
+
+// --- ENDPOINT: Generowanie Ręczne (Przyjmuje filtry z Frontendu) ---
+app.post('/api/reports/generate-now', async (req, res) => {
+  const { userId, filters } = req.body; 
+  try {
+    const report = await generateReportForUser(Number(userId), filters);
+    if (!report) return res.status(404).json({ error: 'Użytkownik nie istnieje.' });
+    res.json({ success: true, reportId: report.id });
+  } catch (error) {
+    console.error("Błąd generowania:", error);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+// --- ENDPOINT: Pobierz listę raportów ---
+app.get('/api/reports', async (req, res) => {
+  try {
+    const reports = await prisma.generatedReport.findMany({
+      orderBy: { generatedAt: 'desc' }
+    });
+    res.json(reports);
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd pobierania raportów' });
+  }
+});
+
+// --- ENDPOINT: Usuń raport ---
+app.delete('/api/reports/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.generatedReport.delete({ where: { id: Number(id) } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Nie udało się usunąć raportu' });
+  }
+});
+
+
+// ============================================================
+// CRON: AUTOMATYCZNE RAPORTY
+// ============================================================
+cron.schedule('* * * * *', async () => {
+    const now = new Date();
+    const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const currentDay = days[now.getDay()];
+    const currentTime = now.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+
+    //console.log(`🕒 [ZEGAR] Sprawdzam zadania: ${currentDay} ${currentTime}`);
+
+    try {
+        const usersToNotify = await prisma.user.findMany({
+            where: { reportEnabled: true, reportDay: currentDay, reportTime: currentTime }
+        });
+
+        if (usersToNotify.length > 0) {
+            console.log(`🚀 Generowanie ${usersToNotify.length} automatycznych raportów...`);
+            for (const user of usersToNotify) {
+                // Wywołanie BEZ filtrów = Domyślnie WSZYSTKO (Status ALL, Kategorie Puste)
+                await generateReportForUser(user.id);
+            }
+        }
+    } catch (error) {
+        console.error("❌ Błąd w Cronie:", error);
+    }
+});
+
+
+// ============================================================
+// POZOSTAŁE ENDPOINTY (Ustawienia, Powiadomienia)
+// ============================================================
+
+app.get('/api/users/:id/settings', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: Number(id) },
+      select: { 
+        reportEnabled: true, 
+        reportDay: true, 
+        reportTime: true,
+        emailEnabled: true, // Dodane
+        emailDays: true,    // Dodane
+        emailTime: true }
+    });
+    if (!user) return res.status(404).json({ error: 'Użytkownik nie istnieje' });
+    res.json(user);
+  } catch (error) { res.status(500).json({ error: 'Błąd pobierania ustawień' }); }
+});
+
+app.put('/api/users/:id/settings', async (req, res) => {
+  const { id } = req.params;
+  const { 
+    reportEnabled, reportDay, reportTime,
+    emailEnabled, emailDays, emailTime
+   } = req.body;
+  try {
+    await prisma.user.update({
+      where: { id: Number(id) },
+      data: { 
+        reportEnabled, reportDay, reportTime,
+        emailEnabled, emailDays, emailTime}
+    });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Błąd zapisu ustawień' }); }
+});
+
+app.get('/api/notifications', async (req, res) => {
+  const userId = req.query.userId ? Number(req.query.userId) : undefined;
+  if (!userId) return res.json([]);
+  try {
+    const notifications = await prisma.notification.findMany({
+      where: { userId }, orderBy: { createdAt: 'desc' }
+    });
+    res.json(notifications);
+  } catch (error) { res.status(500).json({ error: 'Błąd pobierania powiadomień' }); }
+});
+
+app.put('/api/notifications/:id/read', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.notification.update({ where: { id: Number(id) }, data: { isRead: true } });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Błąd aktualizacji' }); }
+});
+
+// --- ENDPOINT: Oznacz WSZYSTKIE jako przeczytane ---
+app.put('/api/notifications/read-all', async (req, res) => {
+  const { userId } = req.body;
+  
+  if (!userId) {
+      return res.status(400).json({ error: 'Brak ID użytkownika' });
+  }
+
+  try {
+    await prisma.notification.updateMany({
+      where: {
+        userId: Number(userId),
+        isRead: false // Aktualizujemy tylko te, które są nieprzeczytane
+      },
+      data: { isRead: true }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Błąd oznaczania wszystkich powiadomień:", error);
+    res.status(500).json({ error: 'Błąd bazy danych' });
+  }
+});
+
+// --- ZMIANA HASŁA (Z PEŁNĄ WALIDACJĄ) ---
+app.put('/api/users/:id/password', async (req, res) => {
+  const { id } = req.params;
+  const { currentPassword, newPassword } = req.body;
+
+  // 1. Walidacja "Świętego Obowiązku" po stronie serwera
+  const hasNumber = /\d/.test(newPassword);
+  const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword);
+  const isValidLength = newPassword.length >= 8;
+
+  if (!isValidLength || !hasNumber || !hasSpecial) {
+      return res.status(400).json({ 
+          error: 'Hasło jest za słabe. Wymagane: 8 znaków, cyfra i znak specjalny.' 
+      });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: Number(id) } });
+    if (!user) return res.status(404).json({ error: 'Użytkownik nie istnieje' });
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+        return res.status(400).json({ error: 'Obecne hasło jest nieprawidłowe' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+        where: { id: Number(id) },
+        data: { password: hashedPassword }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Błąd zmiany hasła:", error);
+    res.status(500).json({ error: 'Błąd serwera przy zmianie hasła' });
+  }
+});
+
+// ============================================================
+// NOWE: ODZYSKIWANIE HASŁA
+// ============================================================
+
+// Krok 1: Wyślij kod weryfikacyjny (BEZPIECZNA WERSJA)
+app.post('/api/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    try {
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user) return res.status(404).json({ error: 'Nie znaleziono użytkownika o takim adresie email.' });
+
+        // --- ZMIANA NA CRYPTO ---
+        // Generuje kryptograficznie bezpieczną liczbę całkowitą z zakresu <100000, 1000000)
+        // Dzięki temu mamy pewność, że to zawsze 6 cyfr i jest to nieprzewidywalne.
+        const code = crypto.randomInt(100000, 1000000).toString();
+        
+        // Kod ważny 15 minut
+        const expiry = new Date();
+        expiry.setMinutes(expiry.getMinutes() + 15);
+
+        // Zapisz w bazie (hashowanie kodu w bazie to kolejny krok security, ale na start crypto wystarczy)
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { resetCode: code, resetCodeExpiry: expiry }
+        });
+
+        // Wyślij maila
+        const htmlContent = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #2563eb;">Odzyskiwanie Hasła</h2>
+                <p>Otrzymaliśmy prośbę o reset hasła. Twój bezpieczny kod weryfikacyjny to:</p>
+                <h1 style="background: #f1f5f9; padding: 10px; letter-spacing: 5px; font-size: 32px; display: inline-block; border-radius: 8px;">${code}</h1>
+                <p style="color: #64748b; font-size: 12px; margin-top: 20px;">Kod jest ważny przez 15 minut. Nikomu go nie udostępniaj.</p>
+            </div>
+        `;
+
+        await transporter.sendMail({
+            from: '"TeamGuard Security" <noreply@teamguard.com>',
+            to: user.email,
+            subject: '🔐 Twój kod do resetu hasła',
+            html: htmlContent
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error("Forgot pass error:", error);
+        res.status(500).json({ error: 'Błąd wysyłania kodu.' });
+    }
+});
+
+// Krok 2: Ustaw nowe hasło (Wymaga kodu)
+app.post('/api/reset-password', async (req, res) => {
+    const { email, code, newPassword } = req.body;
+    try {
+        const user = await prisma.user.findUnique({ where: { email } });
+        
+        if (!user || user.resetCode !== code) {
+            return res.status(400).json({ error: 'Nieprawidłowy kod weryfikacyjny.' });
+        }
+
+        if (!user.resetCodeExpiry || new Date() > user.resetCodeExpiry) {
+            return res.status(400).json({ error: 'Kod wygasł. Poproś o nowy.' });
+        }
+
+        // Walidacja siły hasła (Backendowa tarcza)
+        const hasNumber = /\d/.test(newPassword);
+        const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword);
+        if (newPassword.length < 8 || !hasNumber || !hasSpecial) {
+            return res.status(400).json({ error: 'Hasło za słabe (min. 8 znaków, cyfra, znak specjalny).' });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Zapisz hasło i wyczyść kod
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { password: hashedPassword, resetCode: null, resetCodeExpiry: null }
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Błąd resetowania hasła.' });
+    }
+});
+
+// --- GET: Pobierz historię zmian (Logi) ---
+app.get('/api/logs', async (req, res) => {
+  try {
+    // Pobieramy 100 ostatnich akcji, najnowsze na górze
+    const logs = await prisma.auditLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100
+    });
+    res.json(logs);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Błąd pobierania logów' });
+  }
+});
+
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`--------------------------------------------------`);
+  console.log(`🚀 SERWER API DZIAŁA NA PORTCIE ${PORT}`);
+  console.log(`--------------------------------------------------`);
+});
