@@ -104,7 +104,7 @@ export function EditEmployeePage() {
     e.preventDefault();
     try {
       await axios.put(`http://localhost:3000/api/employees/${id}`, {
-        formData,
+        ...formData,
         adminId: getAdminId()
       }
         
@@ -151,8 +151,9 @@ export function EditEmployeePage() {
 
   // --- LOGIKA USUWANIA ---
   const executeDeleteCompliance = async (complianceId: number) => {
+    const currentAdminId = getAdminId(); // Pobierz ID admina
     try {
-      await axios.delete(`http://localhost:3000/api/compliance/${complianceId}`);
+      await axios.delete(`http://localhost:3000/api/compliance/${complianceId}?adminId=${currentAdminId}`); // Przekaż ID admina w zapytaniu
       toast.success('Usunięto uprawnienie');
       setCompliances(prev => prev.filter(c => c.id !== complianceId));
     } catch (error) { toast.error('Błąd usuwania'); }

@@ -57,6 +57,8 @@ export function LogsPage() {
   const getActionStyle = (action: string) => {
     const lower = action.toLowerCase();
     if (lower.includes('nowy pracownik')) return { icon: <UserPlus size={20}/>, bg: 'bg-green-100', text: 'text-green-600', border: 'border-green-200' };
+    if (lower.includes('nowe uprawnienie')) return { icon: <UserPlus size={20}/>, bg: 'bg-green-100', text: 'text-green-600', border: 'border-green-200' };
+    if (lower.includes('usunięcie uprawnienia') || lower.includes('usunięcie pracownika')) return { icon: <Trash2 size={20}/>, bg: 'bg-red-100', text: 'text-red-600', border: 'border-red-200' };
     if (lower.includes('usuń') || lower.includes('usunięto')) return { icon: <Trash2 size={20}/>, bg: 'bg-red-100', text: 'text-red-600', border: 'border-red-200' };
     if (lower.includes('odnowienie')) return { icon: <RefreshCw size={20}/>, bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-200' };
     if (lower.includes('edycja') || lower.includes('aktualizacja')) return { icon: <Edit size={20}/>, bg: 'bg-orange-100', text: 'text-orange-600', border: 'border-orange-200' };

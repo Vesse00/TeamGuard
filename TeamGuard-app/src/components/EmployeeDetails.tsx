@@ -177,9 +177,11 @@ export function EmployeeDetails() {
   };
 
   const executeDelete = async () => {
-    if (!employee) return;
+    const userStr = localStorage.getItem('user');
+    const currentUser = userStr ? JSON.parse(userStr) : null;
+
     try { 
-      await axios.delete(`http://localhost:3000/api/employees/${employee.id}`);
+      await axios.delete(`http://localhost:3000/api/employees/${id}?adminId=${currentUser?.id}`);
       toast.success('Pracownik został pomyślnie usunięty.'); navigate('/employees');
    } catch {
      toast.error('Wystąpił błąd podczas usuwania.'); 

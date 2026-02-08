@@ -267,16 +267,40 @@ app.post('/api/employees', async (req, res) => {
 });
 
 // --- PUT: Edycja danych pracownika ---
+// --- PUT: Edycja danych pracownika (Z PEŁNYM LOGOWANIEM) ---
 app.put('/api/employees/:id', async (req, res) => {
   const { id } = req.params;
-  const { firstName, lastName, position, email, hiredAt } = req.body;
+  const { firstName, lastName, position, email, hiredAt, adminId } = req.body; // Pamiętaj, by frontend wysyłał adminId!
+
   try {
+    // 1. Pobierz stare dane
+    const oldEmp = await prisma.employee.findUnique({ where: { id: Number(id) } });
+    if (!oldEmp) return res.status(404).json({ error: 'Pracownik nie istnieje' });
+
+    // 2. Aktualizuj
     const updated = await prisma.employee.update({
       where: { id: Number(id) },
       data: { firstName, lastName, position, email, hiredAt: new Date(hiredAt) }
     });
+
+    // 3. WYKRYWANIE ZMIAN (Dla logów)
+    if (adminId) {
+        const changes = [];
+        if (oldEmp.firstName !== firstName) changes.push(`Imię: ${oldEmp.firstName} -> ${firstName}`);
+        if (oldEmp.lastName !== lastName)   changes.push(`Nazwisko: ${oldEmp.lastName} -> ${lastName}`);
+        if (oldEmp.position !== position)   changes.push(`Stanowisko: ${oldEmp.position} -> ${position}`);
+        if (oldEmp.email !== email)         changes.push(`Email: ${oldEmp.email} -> ${email}`);
+        
+        if (changes.length > 0) {
+            const msg = `Edytowano dane pracownika ${firstName} ${lastName}. Zmiany: ${changes.join(', ')}`;
+            // Używamy naszej funkcji pomocniczej
+            await logAndNotifyAll(Number(adminId), "Edycja Danych", msg, `/employees/${id}`, Number(id));
+        }
+    }
+
     res.json(updated);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Błąd aktualizacji' });
   }
 });
@@ -284,16 +308,45 @@ app.put('/api/employees/:id', async (req, res) => {
 // --- DELETE: Usuń pracownika (Z blokadą Admina) ---
 app.delete('/api/employees/:id', async (req, res) => {
   const { id } = req.params;
+  
+  // Pobieramy ID admina z adresu URL (req.query) lub body
+  const rawAdminId = req.query.adminId || req.body.adminId;
+  const adminId = rawAdminId ? Number(rawAdminId) : null;
+
   try {
-    const emp = await prisma.employee.findUnique({ where: { id: Number(id) } });
+    // KROK 1: POBIERZ DANE PRZED USUNIĘCIEM
+    // Musimy to zrobić teraz, bo za chwilę rekord zniknie!
+    const emp = await prisma.employee.findUnique({ 
+        where: { id: Number(id) } 
+    });
     
-    if (emp?.isSystemAdmin) {
+    if (!emp) return res.status(404).json({ error: 'Pracownik nie istnieje' });
+
+    // Zabezpieczenie przed usunięciem głównego admina
+    if (emp.isSystemAdmin) {
         return res.status(403).json({ error: 'Nie można usunąć konta Administratora Głównego.' });
     }
 
+    // KROK 2: TERAZ USUŃ
     await prisma.employee.delete({ where: { id: Number(id) } });
+    
+    // KROK 3: ZAPISZ W LOGACH (Używając danych pobranych w Kroku 1)
+    if (adminId) {
+        // Tu mamy dostęp do emp.firstName, mimo że w bazie go już nie ma
+        const msg = `Usunięto pracownika: ${emp.firstName} ${emp.lastName} (Stanowisko: ${emp.position}).`;
+        
+        await logAndNotifyAll(
+            adminId, 
+            "Usunięcie Pracownika", // To da czerwony kolor w logach
+            msg, 
+            null, // Brak linku, bo profil usunięty
+            null
+        );
+    }
+
     res.json({ success: true });
   } catch (error) {
+    console.error("Błąd usuwania pracownika:", error);
     res.status(500).json({ error: 'Błąd usuwania' });
   }
 });
@@ -319,12 +372,14 @@ app.get('/api/employees', async (req, res) => {
 // ============================================================
 
 // --- POST: Dodaj uprawnienie ---
+// --- POST: Dodaj uprawnienie (LOGOWANIE DLA KAŻDEGO TYPU) ---
 app.post('/api/compliance', async (req, res) => {
-  const { name, expiryDate, issueDate, duration, status, employeeId, type } = req.body;
+  const { name, expiryDate, issueDate, duration, status, employeeId, type, adminId } = req.body;
+  
   try {
     const newCompliance = await prisma.complianceEvent.create({
       data: {
-        name,
+        name, // To może być BHP, ale też "Wózek widłowy" - nazwa jest dynamiczna
         status: status || 'VALID',
         type: type || 'OTHER',
         employeeId: Number(employeeId),
@@ -333,6 +388,17 @@ app.post('/api/compliance', async (req, res) => {
         duration: duration ? String(duration) : "1"
       }
     });
+
+    // LOGOWANIE
+    if (adminId) {
+        // Pobierz imię pracownika dla ładnego logu
+        const emp = await prisma.employee.findUnique({ where: { id: Number(employeeId) } });
+        const empName = emp ? `${emp.firstName} ${emp.lastName}` : `Pracownik #${employeeId}`;
+        
+        const msg = `Dodano nowe uprawnienie: "${name}" dla ${empName}.`;
+        await logAndNotifyAll(Number(adminId), "Nowe Uprawnienie", msg, `/employees/${employeeId}`, Number(employeeId));
+    }
+
     res.json(newCompliance);
   } catch (error) {
     res.status(500).json({ error: 'Błąd dodawania uprawnienia' });
@@ -384,12 +450,47 @@ app.put('/api/compliance/:id', async (req, res) => {
 });
 
 // --- DELETE: Usuń UPRAWNIENIE ---
+// --- DELETE: Usuń UPRAWNIENIE (Z PEŁNYM LOGOWANIEM) ---
 app.delete('/api/compliance/:id', async (req, res) => {
   const { id } = req.params;
+  // Pobieramy adminId z query (np. ?adminId=1) LUB z body (zależnie jak wyśle frontend)
+  const rawAdminId = req.query.adminId || req.body.adminId;
+  const adminId = rawAdminId ? Number(rawAdminId) : null;
+
   try {
+    // 1. POBIERZ DANE PRZED USUNIĘCIEM (Ważne!)
+    const itemToDelete = await prisma.complianceEvent.findUnique({
+        where: { id: Number(id) },
+        include: { employee: true } // Musimy wiedzieć czyje to było
+    });
+
+    if (!itemToDelete) {
+        return res.status(404).json({ error: 'Uprawnienie nie istnieje' });
+    }
+
+    // 2. USUŃ REKORD
     await prisma.complianceEvent.delete({
       where: { id: Number(id) }
     });
+
+    // 3. LOGOWANIE AKCJI
+    if (adminId) {
+        const empName = itemToDelete.employee 
+            ? `${itemToDelete.employee.firstName} ${itemToDelete.employee.lastName}` 
+            : 'Pracownik';
+
+        const msg = `Usunięto uprawnienie: "${itemToDelete.name}" pracownikowi ${empName}.`;
+        
+        // Zapisz w logach
+        await logAndNotifyAll(
+            Number(adminId), 
+            "Usunięcie Uprawnienia", 
+            msg, 
+            `/employees/${itemToDelete.employeeId}`, 
+            itemToDelete.employeeId
+        );
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.error("Błąd usuwania uprawnienia:", error);
