@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'; // Zmiana
 import { Link } from 'react-router-dom';
 import axios from 'axios'; // Zmiana
-import { User, AlertTriangle, CheckCircle, Clock, LayoutGrid, List as ListIcon, UserPlus, Trash2, X, CheckSquare, FileSpreadsheet, Filter } from 'lucide-react';
+import { User, AlertTriangle, CheckCircle, Clock, LayoutGrid, List as ListIcon, UserPlus, Trash2, X, CheckSquare, FileSpreadsheet, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { AddEmployeeModal } from './AddEmployeeModal'; // <--- Import nowego okna
 import { toast } from 'sonner';
 
@@ -23,6 +23,8 @@ interface Employee {
   department: string;
 }
 
+// Typy sortowania
+type SortKey = 'name' | 'position' | 'bhp' | 'medical' | null;
 
 // ZMIANA: Usuwamy props { employees }, bo teraz ten komponent sam sobie pobierze dane
 export function EmployeeList() {
@@ -36,6 +38,7 @@ export function EmployeeList() {
 
   // Filtrowanie
   const [selectedDepartment, setSelectedDepartment] = useState<string>('Wszystkie'); // Stan filtra
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' }); // Domyślnie sortuj po nazwisku A-Z
 
   // Funkcja pobierająca dane (użyjemy jej przy starcie i po dodaniu pracownika)
   const fetchEmployees = () => {
@@ -143,6 +146,67 @@ export function EmployeeList() {
       if (selectedDepartment === 'Wszystkie') return true;
       return (emp.department || 'Ogólny') === selectedDepartment;
   });
+
+  // --- LOGIKA SORTOWANIA ---
+  const handleSort = (key: SortKey) => {
+      let direction: 'asc' | 'desc' = 'asc';
+      // Jeśli już sortujemy po tej kolumnie i jest ASC, to zmień na DESC
+      if (sortConfig.key === key && sortConfig.direction === 'asc') {
+          direction = 'desc';
+      }
+      setSortConfig({ key, direction });
+  };
+
+  // Helper do wyświetlania ikonki sortowania
+  const getSortIcon = (key: SortKey) => {
+      if (sortConfig.key !== key) return <ArrowUpDown size={14} className="text-slate-300" />;
+      return sortConfig.direction === 'asc' 
+          ? <ArrowUp size={14} className="text-blue-600" /> 
+          : <ArrowDown size={14} className="text-blue-600" />;
+  };
+
+  // --- PRZETWARZANIE DANYCH (Filtrowanie + Sortowanie) ---
+  const processEmployees = () => {
+      // 1. Filtrowanie
+      let result = employees.filter(emp => {
+          if (selectedDepartment === 'Wszystkie') return true;
+          return (emp.department || 'Ogólny') === selectedDepartment;
+      });
+
+      // 2. Sortowanie
+      if (sortConfig.key) {
+          result.sort((a, b) => {
+              let valA: any = '';
+              let valB: any = '';
+
+              switch (sortConfig.key) {
+                  case 'name': // Sortowanie po Nazwisku (potem Imieniu)
+                      valA = a.lastName.toLowerCase() + a.firstName.toLowerCase();
+                      valB = b.lastName.toLowerCase() + b.firstName.toLowerCase();
+                      break;
+                  case 'position': // Sortowanie po Dziale (potem Stanowisku)
+                      valA = (a.department || '').toLowerCase() + a.position.toLowerCase();
+                      valB = (b.department || '').toLowerCase() + b.position.toLowerCase();
+                      break;
+                  case 'bhp': // Sortowanie po dacie wygaśnięcia BHP
+                      valA = a.compliance.find(c => c.name === 'Szkolenie BHP')?.expiryDate || '9999-12-31';
+                      valB = b.compliance.find(c => c.name === 'Szkolenie BHP')?.expiryDate || '9999-12-31';
+                      break;
+                  case 'medical': // Sortowanie po dacie wygaśnięcia Badań
+                      valA = a.compliance.find(c => c.name === 'Badania Lekarskie')?.expiryDate || '9999-12-31';
+                      valB = b.compliance.find(c => c.name === 'Badania Lekarskie')?.expiryDate || '9999-12-31';
+                      break;
+              }
+
+              if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+              if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+              return 0;
+          });
+      }
+      return result;
+  };
+
+  const filteredAndSortedEmployees = processEmployees();
 
   return (
     <div className="w-full">
@@ -335,15 +399,47 @@ export function EmployeeList() {
                                     className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                 />
                             </th>
-                        <th className="p-5">Pracownik</th>
-                        <th className="p-5">Stanowisko</th>
-                        <th className="p-5 text-center">BHP</th>
-                        <th className="p-5 text-center">Badania</th>
+                            {/* 1. SORTOWANIE PO NAZWISKU */}
+                            <th 
+                                className="p-5 cursor-pointer hover:bg-slate-100 transition-colors group select-none"
+                                onClick={() => handleSort('name')}
+                            >
+                                <div className="flex items-center gap-2">
+                                    Pracownik {getSortIcon('name')}
+                                </div>
+                            </th>
+                            {/* 2. SORTOWANIE PO STANOWISKU/DZIALE */}
+                            <th 
+                                className="p-5 cursor-pointer hover:bg-slate-100 transition-colors group select-none"
+                                onClick={() => handleSort('position')}
+                            >
+                                <div className="flex items-center gap-2">
+                                    Stanowisko / Dział {getSortIcon('position')}
+                                </div>
+                            </th>
+                            {/* 3. SORTOWANIE PO BHP */}
+                            <th 
+                                className="p-5 text-center cursor-pointer hover:bg-slate-100 transition-colors group select-none"
+                                onClick={() => handleSort('bhp')}
+                            >
+                                <div className="flex items-center justify-center gap-2">
+                                    BHP {getSortIcon('bhp')}
+                                </div>
+                            </th>
+                            {/* 4. SORTOWANIE PO BADANIACH */}
+                            <th 
+                                className="p-5 text-center cursor-pointer hover:bg-slate-100 transition-colors group select-none"
+                                onClick={() => handleSort('medical')}
+                            >
+                                <div className="flex items-center justify-center gap-2">
+                                    Badania {getSortIcon('medical')}
+                                </div>
+                            </th>
                         <th className="p-5 text-right">Akcja</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                    {filteredEmployees.map((emp) => {
+                    {filteredAndSortedEmployees.map((emp) => {
                          // Wyciągamy daty do tabeli
                          const bhp = emp.compliance.find(c => c.name === 'Szkolenie BHP');
                          const medical = emp.compliance.find(c => c.name === 'Badania Lekarskie');
@@ -382,7 +478,7 @@ export function EmployeeList() {
                                         </div>
                                     </td>
                                     <td className="p-4 text-sm text-slate-600 font-medium">
-                                        {emp.position}
+                                        {emp.position} / {emp.department}
                                     </td>
                                     <td className="p-4 text-center">
                                         <span className={`px-2.5 py-1 rounded-md text-xs font-bold whitespace-nowrap ${getStatusColor(bhp)}`}>
