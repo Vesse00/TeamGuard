@@ -53,7 +53,7 @@ export function LoginPage() {
 
   // Dane pracownika (Onboarding)
   const [empData, setEmpData] = useState({
-    position: 'Kierownik / Administrator',
+    position: 'Kierownik',
     hiredAt: new Date().toISOString().split('T')[0],
     bhpDate: '',
     medicalDate: '',

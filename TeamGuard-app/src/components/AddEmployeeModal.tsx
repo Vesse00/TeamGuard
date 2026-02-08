@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
-import { Calendar, ShieldCheck, Stethoscope, ChevronDown, UserPlus } from 'lucide-react';
+import { Calendar, ShieldCheck, Stethoscope, ChevronDown, UserPlus, Briefcase, Building } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -32,6 +32,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
     lastName: '',
     position: '',
     email: '',
+    department: '',
     hiredAt: getToday(),
     bhpStartDate: getToday(),
     bhpDuration: '0.5',
@@ -91,6 +92,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
         bhpStartDate: getToday(), 
         bhpDuration: '0.5',
         medicalStartDate: getToday(), 
+        department: '',
         medicalDuration: '2'
       });
       setIsPermissionsOpen(false);
@@ -146,21 +148,41 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">Stanowisko</label>
-                <input 
-                  required type="text"
-                  className="w-full h-12 border border-slate-300 rounded-xl px-4 text-sm font-medium focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
-                  value={formData.position}
-                  onChange={e => setFormData({...formData, position: e.target.value})}
-                />
-              </div>
+             {/* STANOWISKO I DZIAŁ (OBOK SIEBIE) */}
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                        <Briefcase size={12} /> Stanowisko
+                    </label>
+                    <input 
+                        required 
+                        value={formData.position}
+                        onChange={e => setFormData({...formData, position: e.target.value})}
+                        className="w-full p-3  border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-colors"
+                        placeholder="Magazynier"
+                    />
+                </div>
+                
+                {/* --- NOWE POLE DZIAŁU --- */}
+                <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                        <Building size={12} /> Dział
+                    </label>
+                    <input 
+                        required 
+                        value={formData.department}
+                        onChange={e => setFormData({...formData, department: e.target.value})} // Twój styl aktualizacji
+                        className="w-full p-3  border border-slate-300 rounded-xl  focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-colors"
+                        placeholder="Logistyka"
+                    />
+                </div>
+            </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">Data Zatrudnienia</label>
                 <div className="relative">
                   <input 
                     required type="date"
-                    className="w-full h-12 border border-slate-300 rounded-xl pl-11 pr-4 text-sm font-medium focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-slate-700 cursor-pointer"
+                    className="w-full h-12 border border-slate-300 rounded-xl pl-3 pr-4 text-sm font-medium focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-slate-700 cursor-pointer"
                     value={formData.hiredAt}
                     onChange={e => setFormData({...formData, hiredAt: e.target.value})}
                   />

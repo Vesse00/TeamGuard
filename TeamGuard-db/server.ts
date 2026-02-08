@@ -188,7 +188,7 @@ app.get('/api/employees/:id', async (req, res) => {
 
 // --- POST: Dodaj pracownika (Z LOGOWANIEM) ---
 app.post('/api/employees', async (req, res) => {
-  const { firstName, lastName, position, email, hiredAt, bhpDate, medicalDate, adminId } = req.body;
+  const { firstName, lastName, position, email, hiredAt, department, bhpDate, medicalDate, adminId } = req.body;
   
   // Helpery (bez zmian)
   const getInitials = (f: string, l: string) => `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
@@ -223,6 +223,7 @@ app.post('/api/employees', async (req, res) => {
     const newEmployee = await prisma.employee.create({
       data: {
         firstName, lastName, position, email,
+        department: department || 'Ogólny',
         hiredAt: new Date(hiredAt),
         avatarInitials: getInitials(firstName, lastName),
         userId: newUser.id, // <--- ŁĄCZYMY KONTA
@@ -256,7 +257,7 @@ app.post('/api/employees', async (req, res) => {
 
     // 6. Logowanie akcji (dla Admina)
     if (adminId) {
-        const msg = `Dodano pracownika i wysłano zaproszenie: ${firstName} ${lastName}.`;
+        const msg = `Dodano pracownika i wysłano zaproszenie: ${firstName} ${lastName}. (${position}, Dział: ${department || 'Ogólny'}).`;
         await logAndNotifyAll(Number(adminId), "Nowy Pracownik", msg, `/employees/${newEmployee.id}`, newEmployee.id);
     }
 
@@ -271,7 +272,7 @@ app.post('/api/employees', async (req, res) => {
 // --- PUT: Edycja danych pracownika (Z PEŁNYM LOGOWANIEM) ---
 app.put('/api/employees/:id', async (req, res) => {
   const { id } = req.params;
-  const { firstName, lastName, position, email, hiredAt, adminId } = req.body; // Pamiętaj, by frontend wysyłał adminId!
+  const { firstName, lastName, position, email, hiredAt, department, adminId } = req.body; // Pamiętaj, by frontend wysyłał adminId!
 
   try {
     // 1. Pobierz stare dane
@@ -281,7 +282,8 @@ app.put('/api/employees/:id', async (req, res) => {
     // 2. Aktualizuj
     const updated = await prisma.employee.update({
       where: { id: Number(id) },
-      data: { firstName, lastName, position, email, hiredAt: new Date(hiredAt) }
+      data: { firstName, lastName, position, email, department,
+         hiredAt: new Date(hiredAt) }
     });
 
     // 3. WYKRYWANIE ZMIAN (Dla logów)
@@ -291,6 +293,7 @@ app.put('/api/employees/:id', async (req, res) => {
         if (oldEmp.lastName !== lastName)   changes.push(`Nazwisko: ${oldEmp.lastName} -> ${lastName}`);
         if (oldEmp.position !== position)   changes.push(`Stanowisko: ${oldEmp.position} -> ${position}`);
         if (oldEmp.email !== email)         changes.push(`Email: ${oldEmp.email} -> ${email}`);
+        if (oldEmp.department !== department) changes.push(`Dział: ${oldEmp.department} -> ${department}`);
         
         if (changes.length > 0) {
             const msg = `Edytowano dane pracownika ${firstName} ${lastName}. Zmiany: ${changes.join(', ')}`;

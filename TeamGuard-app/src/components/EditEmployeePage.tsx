@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Save, Plus, Trash2, Calendar, ShieldAlert, Pencil, X, Check, Clock, RefreshCw, CalendarCheck } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, Calendar, ShieldAlert, Pencil, X, Check, Clock, RefreshCw, CalendarCheck, Briefcase, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Compliance {
@@ -49,7 +49,7 @@ export function EditEmployeePage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   
-  const [formData, setFormData] = useState({ firstName: '', lastName: '', position: '', email: '', hiredAt: '' });
+  const [formData, setFormData] = useState({ firstName: '', lastName: '', position: '', email: '', hiredAt: '', department: '' });
   const [compliances, setCompliances] = useState<Compliance[]>([]);
 
   const [newCompliance, setNewCompliance] = useState({
@@ -90,7 +90,7 @@ export function EditEmployeePage() {
     try {
       const res = await axios.get(`http://localhost:3000/api/employees/${id}`);
       setFormData({
-        firstName: res.data.firstName, lastName: res.data.lastName, position: res.data.position,
+        firstName: res.data.firstName, lastName: res.data.lastName, position: res.data.position, department: res.data.department || '',
         email: res.data.email || '', hiredAt: new Date(res.data.hiredAt).toISOString().split('T')[0]
       });
       setCompliances(res.data.compliance);
@@ -244,10 +244,43 @@ export function EditEmployeePage() {
               <Save size={18} className="text-blue-600"/> Dane Podstawowe
             </h2>
             <form onSubmit={handleSaveProfile} className="space-y-4">
-              <div><label className="text-xs font-bold text-slate-500 uppercase">Imię</label><input type="text" className="w-full p-2 border rounded-lg bg-slate-50" value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})} /></div>
-              <div><label className="text-xs font-bold text-slate-500 uppercase">Nazwisko</label><input type="text" className="w-full p-2 border rounded-lg bg-slate-50" value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})} /></div>
-              <div><label className="text-xs font-bold text-slate-500 uppercase">Stanowisko</label><input type="text" className="w-full p-2 border rounded-lg bg-slate-50" value={formData.position} onChange={e => setFormData({...formData, position: e.target.value})} /></div>
-              <div><label className="text-xs font-bold text-slate-500 uppercase">Email</label><input type="email" className="w-full p-2 border rounded-lg bg-slate-50" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /></div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Imię</label>
+                  <input type="text" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all" value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Nazwisko</label>
+                <input type="text" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all" value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Stanowisko</label>
+                <div className="relative">
+                  <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                      name="position"
+                      value={formData.position}
+                      onChange={e => setFormData({ ...formData, position: e.target.value })}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Dział</label>
+                  <div className="relative">
+                  <Layers className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                    name="department"
+                    value={formData.department || ''}
+                    onChange={e => setFormData({ ...formData, department: e.target.value })}
+                    className="w-full pl-10  px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all"
+                    placeholder="Np. Produkcja"
+                  />
+                  </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Email</label>
+                <input type="email" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+              </div>
               <button type="submit" className="w-full mt-4 bg-blue-600 text-white py-2.5 rounded-xl font-bold hover:bg-blue-700 transition-colors">Zapisz Zmiany</button>
             </form>
           </div>
