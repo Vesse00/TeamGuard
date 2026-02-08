@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate, data } from 'react-router-dom';
 import axios from 'axios';
-import { User, Mail, Briefcase, CheckCircle, AlertTriangle, ArrowLeft, Trash2, Pencil, RefreshCw, CalendarCheck } from 'lucide-react';
+import { User, Mail, Briefcase, CheckCircle, AlertTriangle, ArrowLeft, Trash2, Pencil, RefreshCw, CalendarCheck, Send, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Employee {
@@ -22,6 +22,11 @@ interface Employee {
     status: string;
     type?: string;
   }[];
+  user?: {
+    id: number;
+    inviteToken: string | null;
+    email: string;
+  };
 }
 
 export function EmployeeDetails() {
@@ -130,6 +135,22 @@ export function EmployeeDetails() {
     ), { duration: Infinity, position: 'top-center' });
   };
 
+  // Funkcja wysyłania zaproszenia
+  const handleSendInvite = async () => {
+    if (!employee) return;
+    const toastId = toast.loading('Wysyłanie zaproszenia...');
+    
+    try {
+        await axios.post(`http://localhost:3000/api/employees/${employee.id}/invite`, {
+            adminId: currentUser?.id
+        });
+        toast.success('Wysłano zaproszenie na email', { id: toastId });
+    } catch (error) {
+        console.error(error);
+        toast.error('Błąd wysyłania zaproszenia', { id: toastId });
+    }
+  };
+
   const getComplianceStyle = (expiryDateStr: string) => {
     const today = new Date();
     const expiry = new Date(expiryDateStr);
@@ -225,6 +246,28 @@ export function EmployeeDetails() {
             <p className="text-lg text-slate-500 font-medium mb-4">{employee.position} / {employee.department}</p>
             <div className="flex flex-wrap justify-center md:justify-start gap-4 text-sm text-slate-600">
               <div className="flex items-center gap-1 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200"><Mail size={14} /> {employee.email || 'Brak e-maila'}</div>
+              {/* PRZYCISK ZAPROSZENIA (Widoczny tylko dla Admina) */}
+              {isAdmin && (
+                  <>
+                      {/* SCENARIUSZ 1: Użytkownik ma konto i nie ma tokena (czyli jest AKTYWNY) */}
+                      {employee.user && employee.user.inviteToken === null ? (
+                          <div className="ml-2 flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 text-xs font-bold select-none cursor-default" title="Użytkownik zarejestrowany i aktywny">
+                              <UserCheck size={14} />
+                              Konto Aktywne
+                          </div>
+                      ) : (
+                          /* SCENARIUSZ 2: Brak konta LUB konto oczekujące (ma token) -> Pokaż przycisk */
+                          <button 
+                              onClick={handleSendInvite}
+                              className="ml-2 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100 hover:bg-blue-100 transition-colors flex items-center gap-1 font-bold"
+                              title={employee.user ? "Wyślij zaproszenie ponownie" : "Wyślij zaproszenie"}
+                          >
+                              <Send size={12} /> 
+                              {employee.user ? "Wyślij ponownie" : "Wyślij Zaproszenie"}
+                          </button>
+                      )}
+                  </>
+              )}
               <div className="flex items-center gap-1 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200"><Briefcase size={14} /> Zatrudniony: {new Date(employee.hiredAt).toLocaleDateString()}</div>
             </div>
           </div>

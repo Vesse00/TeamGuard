@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'; // Zmiana
 import { Link } from 'react-router-dom';
 import axios from 'axios'; // Zmiana
-import { User, AlertTriangle, CheckCircle, Clock, LayoutGrid, List as ListIcon, UserPlus, Trash2, X, CheckSquare } from 'lucide-react';
+import { User, AlertTriangle, CheckCircle, Clock, LayoutGrid, List as ListIcon, UserPlus, Trash2, X, CheckSquare, FileSpreadsheet } from 'lucide-react';
 import { AddEmployeeModal } from './AddEmployeeModal'; // <--- Import nowego okna
 import { toast } from 'sonner';
 
@@ -42,6 +42,16 @@ export function EmployeeList() {
       })
       .catch(err => console.error(err));
       
+  };
+
+  // Funkcja eksportu zaznaczonych
+  const handleBulkExport = () => {
+      // Budujemy URL z ID-kami: ?ids=1,2,3
+      const idsParam = selectedIds.join(',');
+      window.open(`http://localhost:3000/api/reports/export-excel?ids=${idsParam}`, '_blank');
+      
+      // Opcjonalnie: odznacz po pobraniu
+      // setSelectedIds([]); 
   };
 
   // Pobierz dane przy wejściu na stronę
@@ -200,6 +210,15 @@ export function EmployeeList() {
                           Usuń zaznaczone
                       </>
                   )}
+              </button>
+
+              {/* NOWY PRZYCISK EKSPORTU */}
+              <button 
+                  onClick={handleBulkExport}
+                  className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-bold transition-colors hover:bg-white/5 px-3 py-1.5 rounded-lg ml-2"
+              >
+                  <FileSpreadsheet size={18} /> {/* Upewnij się, że masz import FileSpreadsheet */}
+                  Eksportuj
               </button>
 
               <button 

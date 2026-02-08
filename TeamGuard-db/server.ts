@@ -181,8 +181,12 @@ app.get('/api/employees/:id', async (req, res) => {
   const { id } = req.params;
   const employee = await prisma.employee.findUnique({
     where: { id: Number(id) },
-    include: { compliance: true }
+    include: { 
+      compliance: true,
+      user: true 
+    }
   });
+  if(!employee) return res.status(404).json({ error: 'Nie znaleziono pracownika' });
   res.json(employee);
 });
 
@@ -265,6 +269,97 @@ app.post('/api/employees', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Błąd tworzenia konta pracownika' });
+  }
+});
+
+// --- POST: Ręczne wysyłanie zaproszenia (Styl Crypto & Bcrypt) ---
+app.post('/api/employees/:id/invite', async (req, res) => {
+  const { id } = req.params;
+  const { adminId } = req.body;
+
+  try {
+    // 1. Znajdź pracownika (i sprawdź czy ma już Usera)
+    const emp = await prisma.employee.findUnique({
+      where: { id: Number(id) },
+      include: { user: true }
+    });
+
+    if (!emp) return res.status(404).json({ error: 'Pracownik nie istnieje' });
+
+    // Jeśli User istnieje I nie ma tokenu zaproszenia (czyli został zużyty/wyczyszczony), to znaczy że jest aktywny.
+    if (emp.user && emp.user.inviteToken === null) {
+        return res.status(400).json({ error: 'Ten pracownik ma już aktywne konto i ustawił hasło.' });
+    }
+
+    // 2. Generuj token zaproszenia (Crypto)
+    const inviteToken = crypto.randomBytes(32).toString('hex');
+
+    // 3. Obsługa Usera (Stwórz nowego lub zaktualizuj istniejącego)
+    let userId = emp.userId;
+
+    if (userId) {
+        // SCENARIUSZ A: User już istnieje -> Tylko aktualizujemy token
+        await prisma.user.update({
+            where: { id: userId },
+            data: { inviteToken: inviteToken }
+        });
+    } else {
+        // SCENARIUSZ B: Brak Usera -> Tworzymy go (Tak jak przy dodawaniu pracownika)
+        
+        // Generujemy losowe hasło tymczasowe
+        const tempPassword = crypto.randomBytes(10).toString('hex');
+        const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+        const newUser = await prisma.user.create({
+            data: {
+                firstName: emp.firstName,
+                lastName: emp.lastName,
+                email: emp.email,
+                password: hashedPassword,
+                role: 'USER',
+                inviteToken: inviteToken
+            }
+        });
+        userId = newUser.id;
+
+        // Łączymy pracownika z nowym userem
+        await prisma.employee.update({
+            where: { id: emp.id },
+            data: { userId }
+        });
+    }
+
+    // 4. Wyślij Email (Twój szablon HTML)
+    const inviteLink = `http://localhost:5173/login?token=${inviteToken}`;
+    
+    const htmlContent = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center; border: 1px solid #eee; border-radius: 10px;">
+            <h2 style="color: #2563eb;">Witaj w TeamGuard!</h2>
+            <p>Administrator wysłał do Ciebie nowe zaproszenie do systemu.</p>
+            <p>Kliknij poniższy przycisk, aby ustawić hasło i się zalogować:</p>
+            <a href="${inviteLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin: 20px 0;">Aktywuj Konto</a>
+            <p style="color: #64748b; font-size: 12px;">Link jest jednorazowy.</p>
+        </div>
+    `;
+
+    await transporter.sendMail({
+        from: '"TeamGuard" <noreply@teamguard.com>',
+        to: emp.email,
+        subject: '✉️ Zaproszenie do systemu TeamGuard',
+        html: htmlContent
+    });
+
+    // 5. Logowanie akcji
+    if (adminId) {
+        const msg = `Wysłano ręczne zaproszenie dla pracownika: ${emp.firstName} ${emp.lastName}.`;
+        await logAndNotifyAll(Number(adminId), "Wysłano Zaproszenie", msg, `/employees/${id}`, Number(id));
+    }
+
+    res.json({ success: true, message: 'Zaproszenie wysłane pomyślnie' });
+
+  } catch (error) {
+    console.error("Błąd wysyłania zaproszenia:", error);
+    res.status(500).json({ error: 'Nie udało się wysłać zaproszenia' });
   }
 });
 
@@ -887,7 +982,17 @@ cron.schedule('* * * * *', async () => {
 app.get('/api/reports/export-excel', async (req, res) => {
   try {
     // 1. Pobieramy dane
+    const { ids } = req.query;
+
+    const where: any = {};
+    if (ids) {
+        // Zamieniamy "1,2,3" na tablicę liczb [1, 2, 3]
+        const idList = String(ids).split(',').map(Number);
+        where.id = { in: idList };
+    }
+
     const employees = await prisma.employee.findMany({
+      where,
       include: { compliance: true },
       orderBy: { lastName: 'asc' } // Sortujemy alfabetycznie
     });
