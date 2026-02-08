@@ -248,7 +248,8 @@ export function Navbar() {
       <div className="flex items-center gap-6">
         
         {/* POWIADOMIENIA */}
-        <div className="relative">
+        {isAdmin && (
+<div className="relative">
             <button 
                 onClick={() => setIsNotifOpen(!isNotifOpen)}
                 className={`relative p-2 rounded-xl transition-colors ${isNotifOpen ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}
@@ -311,6 +312,8 @@ export function Navbar() {
                 </>
             )}
         </div>
+        )}
+        
 
         <div className="h-8 w-px bg-slate-200"></div>
 
