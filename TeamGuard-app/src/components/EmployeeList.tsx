@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'; // Zmiana
 import { Link } from 'react-router-dom';
 import axios from 'axios'; // Zmiana
-import { User, AlertTriangle, CheckCircle, Clock, LayoutGrid, List as ListIcon, UserPlus, Trash2, X, CheckSquare, FileSpreadsheet } from 'lucide-react';
+import { User, AlertTriangle, CheckCircle, Clock, LayoutGrid, List as ListIcon, UserPlus, Trash2, X, CheckSquare, FileSpreadsheet, Filter } from 'lucide-react';
 import { AddEmployeeModal } from './AddEmployeeModal'; // <--- Import nowego okna
 import { toast } from 'sonner';
 
@@ -20,6 +20,7 @@ interface Employee {
   isSystemAdmin: boolean;
   email: string;
   compliance: Compliance[];
+  department: string;
 }
 
 
@@ -32,6 +33,9 @@ export function EmployeeList() {
   // --- NOWE: Stan dla zaznaczonych pracowników ---
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  // Filtrowanie
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('Wszystkie'); // Stan filtra
 
   // Funkcja pobierająca dane (użyjemy jej przy starcie i po dodaniu pracownika)
   const fetchEmployees = () => {
@@ -71,7 +75,6 @@ export function EmployeeList() {
   };
 
   // --- LOGIKA ZAZNACZANIA ---
-
   // Zaznacz / Odznacz wszystkich
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -131,6 +134,16 @@ export function EmployeeList() {
     }
   };
 
+  // --- LOGIKA FILTROWANIA ---
+  // 1. Pobieramy unikalne działy z listy pracowników
+  const departments = ['Wszystkie', ...new Set(employees.map(e => e.department || 'Ogólny'))];
+
+  // 2. Filtrujemy listę
+  const filteredEmployees = employees.filter(emp => {
+      if (selectedDepartment === 'Wszystkie') return true;
+      return (emp.department || 'Ogólny') === selectedDepartment;
+  });
+
   return (
     <div className="w-full">
       
@@ -159,6 +172,25 @@ export function EmployeeList() {
         </div>
     
         <div className="flex gap-3 items-center">
+            {/* --- NOWE: FILTR DZIAŁÓW --- */}
+            <div className="relative group">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <Filter size={16} />
+                </div>
+                <select 
+                    value={selectedDepartment}
+                    onChange={(e) => setSelectedDepartment(e.target.value)}
+                    className="pl-9 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:border-blue-500 hover:border-slate-300 transition-colors appearance-none cursor-pointer shadow-sm min-w-[160px]"
+                >
+                    {departments.map(dept => (
+                        <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                </select>
+                {/* Strzałka customowa */}
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+            </div>
             {/* Przełącznik Kafelki / Lista */}
             <div className="bg-white p-1 rounded-lg border border-slate-200 flex shadow-sm">
                 <button
@@ -234,7 +266,7 @@ export function EmployeeList() {
       {/* --- WIDOK KAFELKOWY (GRID) --- */}
       {viewMode === 'grid' && (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
-        {employees.map((emp) => {
+        {filteredEmployees.map((emp) => {
             const alerts = emp.compliance.map(c => ({ ...c, status: getStatus(c.expiryDate) }))
                                          .filter(c => c.status !== 'VALID');
             const isUrgent = alerts.some(a => a.status === 'EXPIRED');
@@ -248,7 +280,7 @@ export function EmployeeList() {
                 <div className="flex items-start justify-between mb-4 pl-3">
                   <div>
                     <h3 className="text-lg font-bold text-slate-800 leading-tight">{emp.firstName} {emp.lastName}</h3>
-                    <p className="text-xs text-slate-500 font-medium mt-1 uppercase tracking-wide">{emp.position}</p>
+                    <p className="text-xs text-slate-500 font-medium mt-1 uppercase tracking-wide">{emp.position} / {emp.department}</p>
                   </div>
                   <div className="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold text-xs border border-slate-200 shrink-0">
                     {emp.avatarInitials || <User size={16}/>}
@@ -311,7 +343,7 @@ export function EmployeeList() {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                    {employees.map((emp) => {
+                    {filteredEmployees.map((emp) => {
                          // Wyciągamy daty do tabeli
                          const bhp = emp.compliance.find(c => c.name === 'Szkolenie BHP');
                          const medical = emp.compliance.find(c => c.name === 'Badania Lekarskie');

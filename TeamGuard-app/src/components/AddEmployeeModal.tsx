@@ -74,6 +74,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
         position: formData.position,
         email: formData.email,
         hiredAt: formData.hiredAt,
+        department: formData.department,
         bhpDate: finalBhpDate,
         medicalDate: finalMedicalDate,
         adminId: adminId
@@ -96,8 +97,11 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
         medicalDuration: '2'
       });
       setIsPermissionsOpen(false);
-    } catch (error) {
-      toast.error('Nie udało się dodać pracownika. Sprawdź połączenie.');
+    } catch (error: any) {
+      console.error(error);
+      const message = error.response?.data?.error || 'Nie udało się dodać pracownika. Sprawdź połączenie.';
+      toast.error(message);
+    } finally {
       setLoading(false);
     }
   };

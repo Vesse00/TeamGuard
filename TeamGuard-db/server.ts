@@ -192,7 +192,7 @@ app.get('/api/employees/:id', async (req, res) => {
 
 // --- POST: Dodaj pracownika (Z LOGOWANIEM) ---
 app.post('/api/employees', async (req, res) => {
-  const { firstName, lastName, position, email, hiredAt, department, bhpDate, medicalDate, adminId } = req.body;
+  const { firstName, lastName, position, email, hiredAt, department, adminId } = req.body;
   
   // Helpery (bez zmian)
   const getInitials = (f: string, l: string) => `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
@@ -204,6 +204,14 @@ app.post('/api/employees', async (req, res) => {
   };
 
   try {
+
+    // Sprawdzamy czy pracownik o takim emailu już istnieje
+    const existingEmp = await prisma.employee.findUnique({ where: { email } });
+    
+    if (existingEmp) {
+        return res.status(400).json({ error: 'Pracownik z tym adresem email już istnieje!' });
+    }
+
     // 1. Sprawdź czy User już istnieje
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) return res.status(400).json({ error: 'Użytkownik z tym mailem już istnieje w systemie.' });
@@ -252,12 +260,18 @@ app.post('/api/employees', async (req, res) => {
         </div>
     `;
 
-    await transporter.sendMail({
-        from: '"TeamGuard" <noreply@teamguard.com>',
-        to: email,
-        subject: '✉️ Zaproszenie do systemu TeamGuard',
-        html: htmlContent
-    });
+    // Opakowane w try-catch, żeby błąd maila nie wywalił całego requestu (opcjonalne, ale bezpieczne)
+    try {
+        await transporter.sendMail({
+            from: '"TeamGuard" <noreply@teamguard.com>',
+            to: email,
+            subject: '✉️ Zaproszenie do systemu TeamGuard',
+            html: htmlContent
+        });
+    } catch (mailError) {
+        console.error("Błąd wysyłania maila przy dodawaniu:", mailError);
+        // Nie robimy return, bo pracownik się dodał, najwyżej wyślemy zaproszenie ręcznie później
+    }
 
     // 6. Logowanie akcji (dla Admina)
     if (adminId) {

@@ -19,7 +19,7 @@ model Employee {
   lastName    String
   position    String
   department      String   @default("Ogólny")
-  email       String?
+  email       String?  @unique
   hiredAt     DateTime
   avatarInitials String?
   compliance  ComplianceEvent[]
