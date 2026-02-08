@@ -39,6 +39,7 @@ export function LoginPage() {
   
   // Pokaż/Ukryj hasło
   const [showPassword, setShowPassword] = useState(false); 
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Dane do logowania/rejestracji - DODANO adminCode
   const [authData, setAuthData] = useState({
@@ -458,25 +459,58 @@ export function LoginPage() {
 
             {/* --- 2. FORMULARZ USTAWIANIA HASŁA (NOWY PRACOWNIK Z LINKU) --- */}
             {view === 'SET_PASSWORD' && (
-                <form onSubmit={handleSetInvitePassword} className="space-y-5 animate-in slide-in-from-right">
-                    <div className="text-center mb-4">
-                        <p className="text-sm text-slate-500">Twój email: <span className="font-bold text-slate-800">{inviteUser?.email}</span></p>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nowe hasło</label>
-                        <input type="password" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-800" 
-                            value={resetData.newPassword} onChange={e => setResetData({...resetData, newPassword: e.target.value})} />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Powtórz hasło</label>
-                        <input type="password" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-800" 
-                            value={resetData.confirmPassword} onChange={e => setResetData({...resetData, confirmPassword: e.target.value})} />
-                    </div>
-                    <button disabled={loading} className="w-full bg-slate-800 text-white font-bold h-12 rounded-xl hover:bg-slate-900 transition-colors shadow-lg">
-                        {loading ? 'Zapisywanie...' : 'Aktywuj Konto i Zaloguj'}
-                    </button>
-                </form>
-            )}
+    <form onSubmit={handleSetInvitePassword} className="space-y-5 animate-in slide-in-from-right">
+        <div className="text-center mb-4">
+            <p className="text-sm text-slate-500">Twój email: <span className="font-bold text-slate-800">{inviteUser?.email}</span></p>
+        </div>
+
+        {/* --- NOWE HASŁO --- */}
+        <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nowe hasło</label>
+            <div className="relative"> {/* 1. Wrapper relative */}
+                <input 
+                    type={showPassword ? "text" : "password"} 
+                    required 
+                    className="w-full p-3 pr-12 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-800" // Dodałem pr-12
+                    value={resetData.newPassword} 
+                    onChange={e => setResetData({...resetData, newPassword: e.target.value})} 
+                />
+                <button
+                    type="button" // Ważne, żeby nie wysyłało formularza!
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+            </div>
+        </div>
+
+        {/* --- POWTÓRZ HASŁO --- */}
+        <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Powtórz hasło</label>
+            <div className="relative"> {/* 1. Wrapper relative */}
+                <input 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    required 
+                    className="w-full p-3 pr-12 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-800" // Dodałem pr-12
+                    value={resetData.confirmPassword} 
+                    onChange={e => setResetData({...resetData, confirmPassword: e.target.value})} 
+                />
+                <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                    {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+            </div>
+        </div>
+
+        <button disabled={loading} className="w-full bg-slate-800 text-white font-bold h-12 rounded-xl hover:bg-slate-900 transition-colors shadow-lg">
+            {loading ? 'Zapisywanie...' : 'Aktywuj Konto i Zaloguj'}
+        </button>
+    </form>
+)}
 
             {/* --- FORMULARZE ODZYSKIWANIA (BEZ ZMIAN) --- */}
             {view === 'FORGOT_EMAIL' && (
@@ -515,22 +549,55 @@ export function LoginPage() {
             )}
 
             {view === 'FORGOT_NEW_PASS' && (
-                <form onSubmit={resetPasswordFinal} className="space-y-5 animate-in slide-in-from-right">
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nowe hasło</label>
-                        <input type="password" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-green-500" 
-                            value={resetData.newPassword} onChange={e => setResetData({...resetData, newPassword: e.target.value})} />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Powtórz hasło</label>
-                        <input type="password" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-green-500" 
-                            value={resetData.confirmPassword} onChange={e => setResetData({...resetData, confirmPassword: e.target.value})} />
-                    </div>
-                    <button disabled={loading} className="w-full bg-green-600 text-white font-bold h-12 rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-600/30">
-                        {loading ? 'Zapisywanie...' : 'Zmień hasło i zaloguj'}
-                    </button>
-                </form>
-            )}
+    <form onSubmit={resetPasswordFinal} className="space-y-5 animate-in slide-in-from-right">
+        
+        {/* --- NOWE HASŁO --- */}
+        <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nowe hasło</label>
+            <div className="relative"> {/* 1. Wrapper */}
+                <input 
+                    type={showPassword ? "text" : "password"} 
+                    required 
+                    className="w-full p-3 pr-12 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-green-500" // 2. Dodany padding pr-12
+                    value={resetData.newPassword} 
+                    onChange={e => setResetData({...resetData, newPassword: e.target.value})} 
+                />
+                <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+            </div>
+        </div>
+
+        {/* --- POWTÓRZ HASŁO --- */}
+        <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Powtórz hasło</label>
+            <div className="relative"> {/* 1. Wrapper */}
+                <input 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    required 
+                    className="w-full p-3 pr-12 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-green-500" // 2. Dodany padding pr-12
+                    value={resetData.confirmPassword} 
+                    onChange={e => setResetData({...resetData, confirmPassword: e.target.value})} 
+                />
+                <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                    {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+            </div>
+        </div>
+
+        <button disabled={loading} className="w-full bg-green-600 text-white font-bold h-12 rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-600/30">
+            {loading ? 'Zapisywanie...' : 'Zmień hasło i zaloguj'}
+        </button>
+    </form>
+)}
 
             {/* PRZEŁĄCZNIK LOGIN / REJESTRACJA */}
             {(view === 'LOGIN' || view === 'REGISTER') && (

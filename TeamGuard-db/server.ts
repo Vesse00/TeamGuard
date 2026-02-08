@@ -309,6 +309,7 @@ app.put('/api/employees/:id', async (req, res) => {
 app.delete('/api/employees/:id', async (req, res) => {
   const { id } = req.params;
   
+  
   // Pobieramy ID admina z adresu URL (req.query) lub body
   const rawAdminId = req.query.adminId || req.body.adminId;
   const adminId = rawAdminId ? Number(rawAdminId) : null;
@@ -327,8 +328,13 @@ app.delete('/api/employees/:id', async (req, res) => {
         return res.status(403).json({ error: 'Nie można usunąć konta Administratora Głównego.' });
     }
 
+    const linkedUserId = emp.userId;
     // KROK 2: TERAZ USUŃ
     await prisma.employee.delete({ where: { id: Number(id) } });
+
+    if (linkedUserId) {
+        await prisma.user.delete({ where: { id: linkedUserId } });
+    }
     
     // KROK 3: ZAPISZ W LOGACH (Używając danych pobranych w Kroku 1)
     if (adminId) {
