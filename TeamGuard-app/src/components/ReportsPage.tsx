@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-import { FileText, Calendar, AlertTriangle, CheckCircle, Download, Trash2, ChevronDown, ChevronUp, Filter, Play, CheckSquare, Square, X, Check } from 'lucide-react';
+import { FileText, Calendar, AlertTriangle, CheckCircle, Download, Trash2, ChevronDown, ChevronUp, Filter, Play, CheckSquare, Square, X, Check, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -20,6 +20,11 @@ const DETAILED_TYPES: Record<string, string[]> = {
     'SEP': ['G1 - Elektryczne (Eksploatacja)', 'G1 - Elektryczne (Dozór)', 'G2 - Cieplne (Eksploatacja)', 'G2 - Cieplne (Dozór)', 'G3 - Gazowe (Eksploatacja)', 'G3 - Gazowe (Dozór)'],
     'DRIVING': ['Prawo Jazdy Kat. B', 'Prawo Jazdy Kat. B+E', 'Prawo Jazdy Kat. C', 'Prawo Jazdy Kat. C+E', 'Prawo Jazdy Kat. D', 'Prawo Jazdy Kat. D+E', 'Prawo Jazdy Kat. T (Ciągnik)', 'Karta Kierowcy', 'Kwalifikacja Zawodowa (Kod 95)'],
     'MANDATORY': ['Badania Lekarskie', 'Szkolenie BHP']
+};
+
+const handleDownloadExcel = () => {
+    // To bezpośrednio otworzy pobieranie pliku
+    window.open('http://localhost:3000/api/reports/export-excel', '_blank');
 };
 
 interface Report {
@@ -371,9 +376,22 @@ export function ReportsPage() {
                     </div>
                 )}
 
-                <button onClick={handleGenerate} disabled={generating} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-70 flex items-center justify-center gap-3">
+                
+                <div className="flex gap-3 mb-6">
+                    {/* Twój stary przycisk PDF */}
+                    <button onClick={handleGenerate} disabled={generating} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-70 flex items-center justify-center gap-3">
                     {generating ? 'Generowanie...' : <><Play size={24} className="fill-white"/> Stwórz Raport PDF</>}
-                </button>
+                    </button>
+
+                    {/* NOWY PRZYCISK CSV */}
+                    <button 
+                        onClick={handleDownloadExcel}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                    >
+                        <FileSpreadsheet size={20} />
+                        Eksportuj do Excel (.xlsx)
+                    </button>
+                </div>                
             </div>
         </div>
 

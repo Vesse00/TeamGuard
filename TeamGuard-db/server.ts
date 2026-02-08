@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 import cron from 'node-cron';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import ExcelJS from 'exceljs';
 
 
 const prisma = new PrismaClient();
@@ -877,6 +878,118 @@ cron.schedule('* * * * *', async () => {
     } catch (error) {
         console.error("❌ Błąd w Cronie:", error);
     }
+});
+
+// --- EKSPORT DO EXCELA (XLSX) Z KOLORAMI I STYLAMI ---
+app.get('/api/reports/export-excel', async (req, res) => {
+  try {
+    // 1. Pobieramy dane
+    const employees = await prisma.employee.findMany({
+      include: { compliance: true },
+      orderBy: { lastName: 'asc' } // Sortujemy alfabetycznie
+    });
+
+    // 2. Tworzymy zeszyt Excela
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Raport Uprawnień');
+
+    // 3. Definiujemy kolumny i ich szerokość
+    sheet.columns = [
+      { header: 'Imię', key: 'firstName', width: 15 },
+      { header: 'Nazwisko', key: 'lastName', width: 20 },
+      { header: 'Stanowisko', key: 'position', width: 25 },
+      { header: 'Typ', key: 'type', width: 15 },
+      { header: 'Nazwa Uprawnienia', key: 'name', width: 30 },
+      { header: 'Data Ważności', key: 'expiryDate', width: 15 },
+      { header: 'Dni do końca', key: 'daysLeft', width: 15 },
+      { header: 'Status', key: 'status', width: 20 },
+    ];
+
+    // 4. Stylujemy nagłówek (Pogrubienie, Szare tło)
+    sheet.getRow(1).font = { bold: true, size: 12 };
+    sheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' } // Jasnoszary
+    };
+
+    // 5. Dodajemy dane i kolorujemy wiersze
+    employees.forEach(emp => {
+      if (emp.compliance.length === 0) {
+        sheet.addRow({
+            firstName: emp.firstName,
+            lastName: emp.lastName,
+            position: emp.position,
+            type: '-', name: '-', expiryDate: '-', daysLeft: '-', status: 'BRAK DANYCH'
+        });
+      } else {
+        emp.compliance.forEach(comp => {
+            const today = new Date();
+            const expiry = new Date(comp.expiryDate);
+            const daysLeft = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            
+            let statusText = 'WAŻNE';
+            let statusColor = 'FFDCFCE7'; // Zielony (ARGB)
+            
+            if (daysLeft < 0) {
+                statusText = 'PRZETERMINOWANE';
+                statusColor = 'FFFEE2E2'; // Czerwony
+            } else if (daysLeft < 30) {
+                statusText = 'WYGASA WKRÓTCE';
+                statusColor = 'FFFFEDD5'; // Pomarańczowy
+            }
+
+            const row = sheet.addRow({
+                firstName: emp.firstName,
+                lastName: emp.lastName,
+                position: emp.position,
+                type: comp.type === 'MANDATORY' ? 'Obowiązkowe' : 'Dodatkowe',
+                name: comp.name,
+                expiryDate: expiry.toISOString().split('T')[0],
+                daysLeft: daysLeft,
+                status: statusText
+            });
+
+            // Kolorowanie komórki "Status"
+            const statusCell = row.getCell('status');
+            statusCell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: statusColor }
+            };
+            statusCell.font = { bold: true };
+            
+            // Wyśrodkowanie danych
+            row.getCell('expiryDate').alignment = { horizontal: 'center' };
+            row.getCell('daysLeft').alignment = { horizontal: 'center' };
+            statusCell.alignment = { horizontal: 'center' };
+        });
+      }
+    });
+
+    // 6. Dodajemy obramowanie do wszystkich komórek z danymi
+    sheet.eachRow((row, rowNumber) => {
+        row.eachCell((cell) => {
+            cell.border = {
+                top: { style: 'thin' },
+                left: { style: 'thin' },
+                bottom: { style: 'thin' },
+                right: { style: 'thin' }
+            };
+        });
+    });
+
+    // 7. Wysyłamy plik
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=Raport_TeamGuard.xlsx');
+
+    await workbook.xlsx.write(res);
+    res.end();
+
+  } catch (error) {
+    console.error("Błąd Excel:", error);
+    res.status(500).send('Błąd generowania Excela');
+  }
 });
 
 
