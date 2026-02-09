@@ -185,7 +185,8 @@ app.get('/api/employees/:id', async (req, res) => {
     include: { 
       compliance: true,
       user: true ,
-      department: true // <--- DODAJEMY INFORMACJE O DZIALE
+      department: true, // <--- DODAJEMY INFORMACJE O DZIALE
+      onboardingTasks: true // <--- DODAJEMY INFORMACJE O ONBOARDING TASKACH
     }
   });
   if(!employee) return res.status(404).json({ error: 'Nie znaleziono pracownika' });
@@ -1522,6 +1523,70 @@ app.delete('/api/templates/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Błąd usuwania zadania' });
+  }
+});
+
+// --- PATCH: Zmień status zadania onboardingowego ---
+app.patch('/api/onboarding-tasks/:id', async (req, res) => {
+  const { id } = req.params;
+  const { completed } = req.body; // true lub false
+
+  try {
+    const task = await prisma.onboardingTask.update({
+      where: { id: Number(id) },
+      data: { completed }
+    });
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd aktualizacji zadania' });
+  }
+});
+
+// --- POST: Synchronizuj (wygeneruj) zadania dla istniejącego pracownika ---
+app.post('/api/employees/:id/sync-tasks', async (req, res) => {
+  const { id } = req.params;
+  try {
+    // 1. Pobierz pracownika i jego dział
+    const emp = await prisma.employee.findUnique({
+        where: { id: Number(id) },
+        include: { onboardingTasks: true }
+    });
+
+    if (!emp || !emp.departmentId) {
+        return res.status(400).json({ error: 'Pracownik nie istnieje lub nie ma przypisanego działu.' });
+    }
+
+    // 2. Pobierz szablony dla tego działu
+    const templates = await prisma.onboardingTemplate.findMany({
+        where: { departmentId: emp.departmentId }
+    });
+
+    if (templates.length === 0) {
+        return res.json({ message: 'Brak szablonów w tym dziale.' });
+    }
+
+    // 3. Sprawdź, których zadań brakuje (po treści)
+    const existingTaskNames = emp.onboardingTasks.map(t => t.task);
+    const tasksToCreate = templates.filter(t => !existingTaskNames.includes(t.task));
+
+    if (tasksToCreate.length > 0) {
+        const createPromises = tasksToCreate.map(t => 
+            prisma.onboardingTask.create({
+                data: {
+                    task: t.task,
+                    employeeId: Number(id),
+                    completed: false
+                }
+            })
+        );
+        await prisma.$transaction(createPromises);
+    }
+
+    res.json({ success: true, added: tasksToCreate.length });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Błąd synchronizacji zadań' });
   }
 });
 
