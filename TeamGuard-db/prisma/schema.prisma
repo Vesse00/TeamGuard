@@ -18,11 +18,16 @@ model Employee {
   firstName   String
   lastName    String
   position    String
-  department      String   @default("Ogólny")
+  
+  // RELACJA: Dział (Wiele:1) -> TO JEST KLUCZOWA ZMIANA
+  departmentId   Int?
+  department     Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
   email       String?  @unique
   hiredAt     DateTime
   avatarInitials String?
   compliance  ComplianceEvent[]
+  onboardingTasks OnboardingTask[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -98,4 +103,29 @@ model AuditLog {
   performedBy String   // Imię i Nazwisko Admina
   targetId    Int?     // ID pracownika, którego to dotyczy (dla linkowania)
   createdAt   DateTime @default(now())
+}
+
+// --- DZIAŁY (Nowa tabela) ---
+model Department {
+  id                  Int                  @id @default(autoincrement())
+  name                String               @unique
+  employees           Employee[]
+  onboardingTemplates OnboardingTemplate[]
+}
+
+// --- SZABLONY ONBOARDINGU (Dla działu) ---
+model OnboardingTemplate {
+  id           Int        @id @default(autoincrement())
+  task         String
+  departmentId Int
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+}
+
+// --- ZADANIA PRACOWNIKA (Konkretne) ---
+model OnboardingTask {
+  id         Int      @id @default(autoincrement())
+  task       String
+  completed  Boolean  @default(false)
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }

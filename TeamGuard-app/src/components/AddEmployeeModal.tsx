@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { Calendar, ShieldCheck, Stethoscope, ChevronDown, UserPlus, Briefcase, Building } from 'lucide-react';
@@ -10,9 +10,15 @@ interface Props {
   onSuccess: () => void;
 }
 
+interface Department {
+    id: number;
+    name: string;
+}
+
 export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [departments, setDepartments] = useState<Department[]>([]);
   
   const getToday = () => new Date().toISOString().split('T')[0];
 
@@ -32,13 +38,22 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
     lastName: '',
     position: '',
     email: '',
-    department: '',
+    departmentId: '',
     hiredAt: getToday(),
     bhpStartDate: getToday(),
     bhpDuration: '0.5',
     medicalStartDate: getToday(),
     medicalDuration: '2'
   });
+
+  // Pobieranie listy działów przy otwarciu
+  useEffect(() => {
+      if (isOpen) {
+          axios.get('http://localhost:3000/api/departments')
+              .then(res => setDepartments(res.data))
+              .catch(err => console.error("Błąd pobierania działów", err));
+      }
+  }, [isOpen]);
 
   const handleNameChange = (field: 'firstName' | 'lastName', value: string) => {
     const capitalized = value.length > 0 
@@ -68,20 +83,24 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
     const finalBhpDate = calculateEndDate(formData.bhpStartDate, formData.bhpDuration);
     const finalMedicalDate = calculateEndDate(formData.medicalStartDate, formData.medicalDuration);
 
-    const apiPayload = {
+    /*const apiPayload = {
         firstName: formData.firstName,
         lastName: formData.lastName,
         position: formData.position,
         email: formData.email,
         hiredAt: formData.hiredAt,
-        department: formData.department,
+        departmentId: formData.departmentId,
         bhpDate: finalBhpDate,
         medicalDate: finalMedicalDate,
         adminId: adminId
-    };
+    };*/
 
     try {
-      await axios.post('http://localhost:3000/api/employees', apiPayload);
+      await axios.post('http://localhost:3000/api/employees', {
+        ...formData,
+        departmentId: formData.departmentId ? Number(formData.departmentId) : undefined,
+        adminId,
+      });
       setLoading(false);
       onSuccess();
       onClose();
@@ -93,7 +112,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
         bhpStartDate: getToday(), 
         bhpDuration: '0.5',
         medicalStartDate: getToday(), 
-        department: '',
+        departmentId: '',
         medicalDuration: '2'
       });
       setIsPermissionsOpen(false);
@@ -172,13 +191,16 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
                         <Building size={12} /> Dział
                     </label>
-                    <input 
-                        required 
-                        value={formData.department}
-                        onChange={e => setFormData({...formData, department: e.target.value})} // Twój styl aktualizacji
-                        className="w-full p-3  border border-slate-300 rounded-xl  focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-colors"
-                        placeholder="Logistyka"
-                    />
+                    <select 
+                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all font-medium appearance-none cursor-pointer"
+                            value={formData.departmentId}
+                            onChange={e => setFormData({...formData, departmentId: e.target.value})}
+                        >
+                            <option value="">-- Wybierz --</option>
+                            {departments.map(dept => (
+                                <option key={dept.id} value={dept.id}>{dept.name}</option>
+                            ))}
+                    </select>
                 </div>
             </div>
               <div className="space-y-2">

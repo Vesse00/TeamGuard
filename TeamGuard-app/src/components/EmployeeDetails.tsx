@@ -13,7 +13,7 @@ interface Employee {
   hiredAt: string;
   avatarInitials: string;
   isSystemAdmin: boolean;
-  department: string;
+  department?: { id: number; name: string };
   compliance: {
     id: number;
     name: string;
@@ -243,7 +243,7 @@ export function EmployeeDetails() {
           <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl font-bold border-4 border-white shadow-sm shrink-0">{employee.avatarInitials || <User size={40} />}</div>
           <div className="text-center md:text-left flex-1">
             <h1 className="text-3xl font-bold text-slate-800">{employee.firstName} {employee.lastName}</h1>
-            <p className="text-lg text-slate-500 font-medium mb-4">{employee.position} / {employee.department}</p>
+            <p className="text-lg text-slate-500 font-medium mb-4">{employee.position} / {employee.department?.name}</p>
             <div className="flex flex-wrap justify-center md:justify-start gap-4 text-sm text-slate-600">
               <div className="flex items-center gap-1 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200"><Mail size={14} /> {employee.email || 'Brak e-maila'}</div>
               {/* PRZYCISK ZAPROSZENIA (Widoczny tylko dla Admina) */}

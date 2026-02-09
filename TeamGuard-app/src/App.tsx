@@ -11,6 +11,7 @@ import { SettingsPage } from './components/SettingsPage';
 import { ReportsPage } from './components/ReportsPage';
 import { CalendarPage } from './components/CalendarPage';
 import { LogsPage } from './components/LogsPage';
+import { DepartmentsPage } from './components/DepartmentsPage';
 
 // Komponenty nawigacyjne
 import { Sidebar } from './components/Sidebar';
@@ -56,6 +57,7 @@ function App() {
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/logs" element={<LogsPage />} />
+            <Route path="/departments" element={<DepartmentsPage />} />
           </Route>
 
         </Route>

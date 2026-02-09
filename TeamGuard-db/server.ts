@@ -184,7 +184,8 @@ app.get('/api/employees/:id', async (req, res) => {
     where: { id: Number(id) },
     include: { 
       compliance: true,
-      user: true 
+      user: true ,
+      department: true // <--- DODAJEMY INFORMACJE O DZIALE
     }
   });
   if(!employee) return res.status(404).json({ error: 'Nie znaleziono pracownika' });
@@ -193,7 +194,7 @@ app.get('/api/employees/:id', async (req, res) => {
 
 // --- POST: Dodaj pracownika (Z LOGOWANIEM) ---
 app.post('/api/employees', async (req, res) => {
-  const { firstName, lastName, position, email, hiredAt, department, adminId } = req.body;
+  const { firstName, lastName, position, email, hiredAt, departmentId, adminId } = req.body;
   
   // Helpery (bez zmian)
   const getInitials = (f: string, l: string) => `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
@@ -236,7 +237,7 @@ app.post('/api/employees', async (req, res) => {
     const newEmployee = await prisma.employee.create({
       data: {
         firstName, lastName, position, email,
-        department: department || 'Ogólny',
+        departmentId: departmentId ? Number(departmentId) : undefined,
         hiredAt: new Date(hiredAt),
         avatarInitials: getInitials(firstName, lastName),
         userId: newUser.id, // <--- ŁĄCZYMY KONTA
@@ -276,7 +277,12 @@ app.post('/api/employees', async (req, res) => {
 
     // 6. Logowanie akcji (dla Admina)
     if (adminId) {
-        const msg = `Dodano pracownika i wysłano zaproszenie: ${firstName} ${lastName}. (${position}, Dział: ${department || 'Ogólny'}).`;
+        let deptName = 'Brak';
+        if (departmentId) {
+            const d = await prisma.department.findUnique({ where: { id: Number(departmentId) } });
+            if (d) deptName = d.name;
+        }
+        const msg = `Dodano pracownika: ${firstName} ${lastName} (${position}, Dział: ${deptName}).`;
         await logAndNotifyAll(Number(adminId), "Nowy Pracownik", msg, `/employees/${newEmployee.id}`, newEmployee.id);
     }
 
@@ -382,18 +388,22 @@ app.post('/api/employees/:id/invite', async (req, res) => {
 // --- PUT: Edycja danych pracownika (Z PEŁNYM LOGOWANIEM) ---
 app.put('/api/employees/:id', async (req, res) => {
   const { id } = req.params;
-  const { firstName, lastName, position, email, hiredAt, department, adminId } = req.body; // Pamiętaj, by frontend wysyłał adminId!
+  const { firstName, lastName, position, email, hiredAt, departmentId, adminId } = req.body; // Pamiętaj, by frontend wysyłał adminId!
 
   try {
     // 1. Pobierz stare dane
-    const oldEmp = await prisma.employee.findUnique({ where: { id: Number(id) } });
+    const oldEmp = await prisma.employee.findUnique({ 
+      where: { id: Number(id) },
+      include: { department: true } // Pobieramy też dział dla logów);
+      });
     if (!oldEmp) return res.status(404).json({ error: 'Pracownik nie istnieje' });
 
     // 2. Aktualizuj
     const updated = await prisma.employee.update({
       where: { id: Number(id) },
-      data: { firstName, lastName, position, email, department,
-         hiredAt: new Date(hiredAt) }
+      data: { firstName, lastName, position, email, 
+        departmentId: departmentId ? Number(departmentId) : null,
+        hiredAt: new Date(hiredAt) }
     });
 
     // 3. WYKRYWANIE ZMIAN (Dla logów)
@@ -403,12 +413,27 @@ app.put('/api/employees/:id', async (req, res) => {
         if (oldEmp.lastName !== lastName)   changes.push(`Nazwisko: ${oldEmp.lastName} -> ${lastName}`);
         if (oldEmp.position !== position)   changes.push(`Stanowisko: ${oldEmp.position} -> ${position}`);
         if (oldEmp.email !== email)         changes.push(`Email: ${oldEmp.email} -> ${email}`);
-        if (oldEmp.department !== department) changes.push(`Dział: ${oldEmp.department} -> ${department}`);
+        // Specjalna logika dla Działu (ID -> Nazwa)
+        const newDeptId = departmentId ? Number(departmentId) : null;
         
-        if (changes.length > 0) {
-            const msg = `Edytowano dane pracownika ${firstName} ${lastName}. Zmiany: ${changes.join(', ')}`;
-            // Używamy naszej funkcji pomocniczej
-            await logAndNotifyAll(Number(adminId), "Edycja Danych", msg, `/employees/${id}`, Number(id));
+        if (oldEmp.departmentId !== newDeptId) {
+            // 1. Pobierz starą nazwę (mamy ją dzięki include: department)
+            const oldDeptName = oldEmp.department?.name || 'Brak';
+            
+            // 2. Pobierz nową nazwę z bazy (jeśli przypisano nowy dział)
+            let newDeptName = 'Brak';
+            if (newDeptId) {
+                const newDeptObj = await prisma.department.findUnique({ where: { id: newDeptId } });
+                if (newDeptObj) newDeptName = newDeptObj.name;
+            }
+
+            changes.push(`Dział: ${oldDeptName} -> ${newDeptName}`);
+        
+          if (changes.length > 0) {
+              const msg = `Edytowano dane pracownika ${firstName} ${lastName}. Zmiany: ${changes.join(', ')}`;
+              // Używamy naszej funkcji pomocniczej
+              await logAndNotifyAll(Number(adminId), "Edycja Danych", msg, `/employees/${id}`, Number(id));
+          }
         }
     }
 
@@ -478,7 +503,7 @@ app.get('/api/employees', async (req, res) => {
   try {
     const emps = await prisma.employee.findMany({ 
         where, 
-        include: { compliance: true }, 
+        include: { compliance: true, department: true }, 
         orderBy: { createdAt: 'desc' } 
     });
     res.json(emps);
@@ -761,10 +786,36 @@ app.post('/api/employees/onboarding', async (req, res) => {
   };
 
   try {
+    // =========================================================
+    // KROK A: AUTOMATYCZNE TWORZENIE DZIAŁU "ZARZĄD"
+    // =========================================================
+    let adminDept = await prisma.department.findUnique({ where: { name: 'Zarząd' } });
+    
+    if (!adminDept) {
+        // Jeśli nie ma działu Zarząd, tworzymy go
+        adminDept = await prisma.department.create({ 
+            data: { name: 'Zarząd' } 
+        });
+        
+        // Opcjonalnie: Dodajemy domyślne zadanie dla Zarządu
+        await prisma.onboardingTemplate.create({
+            data: { 
+                departmentId: adminDept.id, 
+                task: "Konfiguracja systemu TeamGuard i zaproszenie pracowników" 
+            }
+        });
+    }
+  } catch (error) {
+    console.error("Błąd podczas tworzenia działu Zarząd:", error);
+    return res.status(500).json({ error: 'Błąd podczas przygotowywania działu Zarząd' });
+  }
+
+  try {
     const newEmployee = await prisma.employee.create({
       data: {
         firstName, lastName, email,
         position: position || 'Administrator',
+        departmentId: adminDept.id, // <--- Przypisujemy do działu Zarząd
         hiredAt: hiredAt ? new Date(hiredAt) : new Date(),
         avatarInitials: getInitials(firstName, lastName),
         isSystemAdmin: true,
@@ -789,7 +840,19 @@ app.post('/api/employees/onboarding', async (req, res) => {
         }
       }
     });
-    res.json(newEmployee);
+
+    // =========================================================
+    // KROK D: PRZYPISANIE ZADAŃ ONBOARDINGOWYCH
+    // =========================================================
+    const templates = await prisma.onboardingTemplate.findMany({ where: { departmentId: adminDept.id } });
+    if (templates.length > 0) {
+        const tasks = templates.map(t => prisma.onboardingTask.create({
+            data: { task: t.task, employeeId: newEmployee.id, completed: false }
+        }));
+        await prisma.$transaction(tasks);
+    }
+
+    res.json(newEmployee.id);
   } catch (error) {
     console.error("Błąd onboardingu:", error);
     res.status(500).json({ error: 'Błąd tworzenia profilu pracownika' });
@@ -1372,6 +1435,93 @@ app.get('/api/logs', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Błąd pobierania logów' });
+  }
+});
+
+// ============================================================
+// MODUŁ: DZIAŁY I ONBOARDING (ZARZĄDZANIE)
+// ============================================================
+
+// 1. POBIERZ WSZYSTKIE DZIAŁY (wraz z licznikami pracowników)
+app.get('/api/departments', async (req, res) => {
+  try {
+    const departments = await prisma.department.findMany({
+      include: {
+        _count: { select: { employees: true } }, // Liczymy pracowników
+        onboardingTemplates: true                // Pobieramy szablony zadań
+      }
+    });
+    res.json(departments);
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd pobierania działów' });
+  }
+});
+
+// 2. DODAJ NOWY DZIAŁ
+app.post('/api/departments', async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Nazwa wymagana' });
+  
+  try {
+    const newDept = await prisma.department.create({
+      data: { name }
+    });
+    res.json(newDept);
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd tworzenia działu' });
+  }
+});
+
+// 3. USUŃ DZIAŁ (Zabezpieczenie przed usunięciem działu z ludźmi)
+app.delete('/api/departments/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const dept = await prisma.department.findUnique({
+        where: { id: Number(id) },
+        include: { _count: { select: { employees: true } } }
+    });
+
+    if (dept && dept._count.employees > 0) {
+        return res.status(400).json({ error: 'Nie można usunąć działu, który ma przypisanych pracowników.' });
+    }
+
+    // Usuwamy najpierw szablony zadań tego działu
+    await prisma.onboardingTemplate.deleteMany({ where: { departmentId: Number(id) } });
+    // Usuwamy dział
+    await prisma.department.delete({ where: { id: Number(id) } });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Błąd usuwania działu' });
+  }
+});
+
+// 4. DODAJ ZADANIE ONBOARDINGOWE DO DZIAŁU
+app.post('/api/departments/:id/templates', async (req, res) => {
+  const { id } = req.params; 
+  const { task } = req.body;
+  try {
+    const newTemplate = await prisma.onboardingTemplate.create({
+      data: {
+        departmentId: Number(id),
+        task
+      }
+    });
+    res.json(newTemplate);
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd dodawania zadania' });
+  }
+});
+
+// 5. USUŃ ZADANIE ONBOARDINGOWE
+app.delete('/api/templates/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.onboardingTemplate.delete({ where: { id: Number(id) } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Błąd usuwania zadania' });
   }
 });
 

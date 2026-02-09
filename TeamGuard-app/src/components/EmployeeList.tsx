@@ -20,7 +20,13 @@ interface Employee {
   isSystemAdmin: boolean;
   email: string;
   compliance: Compliance[];
-  department: string;
+  department?: Department;
+}
+
+// --- TYPY DANYCH ---
+interface Department {
+    id: number;
+    name: string;
 }
 
 // Typy sortowania
@@ -139,12 +145,12 @@ export function EmployeeList() {
 
   // --- LOGIKA FILTROWANIA ---
   // 1. Pobieramy unikalne działy z listy pracowników
-  const departments = ['Wszystkie', ...new Set(employees.map(e => e.department || 'Ogólny'))];
+ const departments = ['Wszystkie', ...Array.from(new Set(employees.map(e => e.department?.name || 'Brak')))];
 
   // 2. Filtrujemy listę
   const filteredEmployees = employees.filter(emp => {
       if (selectedDepartment === 'Wszystkie') return true;
-      return (emp.department || 'Ogólny') === selectedDepartment;
+      return (emp.department?.name || 'Ogólny') === selectedDepartment;
   });
 
   // --- LOGIKA SORTOWANIA ---
@@ -170,7 +176,7 @@ export function EmployeeList() {
       // 1. Filtrowanie
       let result = employees.filter(emp => {
           if (selectedDepartment === 'Wszystkie') return true;
-          return (emp.department || 'Ogólny') === selectedDepartment;
+          return (emp.department?.name || 'Ogólny') === selectedDepartment;
       });
 
       // 2. Sortowanie
@@ -185,8 +191,8 @@ export function EmployeeList() {
                       valB = b.lastName.toLowerCase() + b.firstName.toLowerCase();
                       break;
                   case 'position': // Sortowanie po Dziale (potem Stanowisku)
-                      valA = (a.department || '').toLowerCase() + a.position.toLowerCase();
-                      valB = (b.department || '').toLowerCase() + b.position.toLowerCase();
+                      valA = (a.department?.name || '').toLowerCase() + a.position.toLowerCase();
+                      valB = (b.department?.name || '').toLowerCase() + b.position.toLowerCase();
                       break;
                   case 'bhp': // Sortowanie po dacie wygaśnięcia BHP
                       valA = a.compliance.find(c => c.name === 'Szkolenie BHP')?.expiryDate || '9999-12-31';
@@ -344,7 +350,7 @@ export function EmployeeList() {
                 <div className="flex items-start justify-between mb-4 pl-3">
                   <div>
                     <h3 className="text-lg font-bold text-slate-800 leading-tight">{emp.firstName} {emp.lastName}</h3>
-                    <p className="text-xs text-slate-500 font-medium mt-1 uppercase tracking-wide">{emp.position} / {emp.department}</p>
+                    <p className="text-xs text-slate-500 font-medium mt-1 uppercase tracking-wide">{emp.position} / {emp.department?.name}</p>
                   </div>
                   <div className="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold text-xs border border-slate-200 shrink-0">
                     {emp.avatarInitials || <User size={16}/>}
@@ -478,7 +484,7 @@ export function EmployeeList() {
                                         </div>
                                     </td>
                                     <td className="p-4 text-sm text-slate-600 font-medium">
-                                        {emp.position} / {emp.department}
+                                        {emp.position} / {emp.department?.name || 'Brak'}
                                     </td>
                                     <td className="p-4 text-center">
                                         <span className={`px-2.5 py-1 rounded-md text-xs font-bold whitespace-nowrap ${getStatusColor(bhp)}`}>

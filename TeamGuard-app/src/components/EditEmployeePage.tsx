@@ -14,6 +14,11 @@ interface Compliance {
   type: string;
 }
 
+interface Department {
+    id: number;
+    name: string;
+}
+
 const getAdminId = () => {
     const u = localStorage.getItem('user');
     return u ? JSON.parse(u).id : null;
@@ -49,9 +54,14 @@ export function EditEmployeePage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   
-  const [formData, setFormData] = useState({ firstName: '', lastName: '', position: '', email: '', hiredAt: '', department: '' });
+  //lista działów do selecta
+  const [departments, setDepartments] = useState<Department[]>([]);
+
+  const [formData, setFormData] = useState({ firstName: '', lastName: '', position: '', email: '', hiredAt: '', departmentId: '' });
   const [compliances, setCompliances] = useState<Compliance[]>([]);
 
+ 
+  
   const [newCompliance, setNewCompliance] = useState({
     category: 'UDT', 
     details: COMPLIANCE_CATEGORIES['UDT'][0],
@@ -88,12 +98,25 @@ export function EditEmployeePage() {
 
   const fetchData = async () => {
     try {
-      const res = await axios.get(`http://localhost:3000/api/employees/${id}`);
+      // ZMIANA: Pobieramy dane pracownika I listę działów równocześnie
+      const [empRes, deptRes] = await Promise.all([
+          axios.get(`http://localhost:3000/api/employees/${id}`),
+          axios.get('http://localhost:3000/api/departments')
+      ]);
+
+      setDepartments(deptRes.data);
+
       setFormData({
-        firstName: res.data.firstName, lastName: res.data.lastName, position: res.data.position, department: res.data.department || '',
-        email: res.data.email || '', hiredAt: new Date(res.data.hiredAt).toISOString().split('T')[0]
+        firstName: empRes.data.firstName, 
+        lastName: empRes.data.lastName, 
+        position: empRes.data.position, 
+        // Ustawiamy ID działu, jeśli istnieje
+        departmentId: empRes.data.department?.id || '',
+        email: empRes.data.email || '', 
+        hiredAt: new Date(empRes.data.hiredAt).toISOString().split('T')[0]
       });
-      setCompliances(res.data.compliance);
+
+      setCompliances(empRes.data.compliance);
       setLoading(false);
     } catch (error) { toast.error('Błąd pobierania danych'); navigate('/employees'); }
   };
@@ -105,6 +128,7 @@ export function EditEmployeePage() {
     try {
       await axios.put(`http://localhost:3000/api/employees/${id}`, {
         ...formData,
+        departmentId: formData.departmentId ? Number(formData.departmentId) : null,
         adminId: getAdminId()
       }
         
@@ -268,13 +292,17 @@ export function EditEmployeePage() {
                 <label className="text-xs font-bold text-slate-500 uppercase">Dział</label>
                   <div className="relative">
                   <Layers className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input
-                    name="department"
-                    value={formData.department || ''}
-                    onChange={e => setFormData({ ...formData, department: e.target.value })}
-                    className="w-full pl-10  px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all"
-                    placeholder="Np. Produkcja"
-                  />
+                  <select
+                    name="departmentId"
+                    value={formData.departmentId}
+                    onChange={e => setFormData({ ...formData, departmentId: e.target.value })}
+                    className="w-full pl-10 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer"
+                  >
+                    <option value="">-- Brak działu --</option>
+                    {departments.map(dept => (
+                        <option key={dept.id} value={dept.id}>{dept.name}</option>
+                    ))}
+                  </select>
                   </div>
               </div>
               <div>

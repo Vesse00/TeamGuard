@@ -3,6 +3,14 @@ import { Users, AlertTriangle, CheckCircle, Clock, Building, ArrowRight } from '
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
+// Poprawiony interfejs
+interface Employee {
+    id: number;
+    firstName: string;
+    department?: { name: string }; // Obiekt!
+    compliance: any[];
+}
+
 export function DashboardHome() {
   const [stats, setStats] = useState({ total: 0, expired: 0, warning: 0 });
   const [departmentStats, setDepartmentStats] = useState<{ name: string; count: number }[]>([]);
@@ -27,7 +35,7 @@ export function DashboardHome() {
     // 2. JEŚLI ADMIN -> POBIERZ STATYSTYKI
     axios.get('http://localhost:3000/api/employees')
       .then(response => {
-        const employees = response.data;
+        const employees: Employee[] = response.data;
         const total = employees.length;
         let expired = 0;
         let warning = 0;
@@ -42,7 +50,7 @@ export function DashboardHome() {
             else if (hasWarning) warning++;
 
             // Zliczanie pracowników w działach
-            const deptName = emp.department || 'Ogólny';
+            const deptName = emp.department?.name || 'Inne';
             deptCounts[deptName] = (deptCounts[deptName] || 0) + 1;
         });
 

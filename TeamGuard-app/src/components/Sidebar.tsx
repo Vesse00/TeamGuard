@@ -11,7 +11,7 @@ import {
   MoreHorizontal,
   History,
   UserCircle,
-  Settings
+  Building
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -63,6 +63,9 @@ export function Sidebar() {
                 </Link>
                 <Link to="/calendar" className={getLinkClass('/calendar')}>
                     <Calendar size={20} /> Kalendarz
+                </Link>
+                <Link to="/departments" className={getLinkClass('/departments')}>
+                    <Building size={20} /> Działy
                 </Link>
             </>
         )}
