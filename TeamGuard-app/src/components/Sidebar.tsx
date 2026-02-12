@@ -11,7 +11,7 @@ import {
   MoreHorizontal,
   History,
   UserCircle,
-  Building
+  Building, 
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -106,10 +106,17 @@ export function Sidebar() {
       </nav>
 
       {/* STOPKA */}
-      <div className="p-3 border-t border-slate-800 bg-slate-900">
-        <p className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">System</p>
-        <Link to="/help" className={getLinkClass('/help')}>
-          <LifeBuoy size={20} /> Pomoc
+      <div className="p-4 border-t border-slate-800/50 mt-auto">
+        <Link 
+          to="/help" 
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium ${
+            location.pathname === '/help' 
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-900/20' 
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+          }`}
+        >
+          <LifeBuoy size={20} />
+          <span>Pomoc</span>
         </Link>
       </div>
     </aside>

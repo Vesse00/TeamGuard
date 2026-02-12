@@ -1590,6 +1590,129 @@ app.post('/api/employees/:id/sync-tasks', async (req, res) => {
   }
 });
 
+// ============================================================
+// MODUŁ: RCP (Rejestracja Czasu Pracy)
+// ============================================================
+
+// 1. SPRAWDŹ STATUS (Czy pracownik teraz pracuje?)
+app.get('/api/work-log/status/:employeeId', async (req, res) => {
+    const { employeeId } = req.params;
+    try {
+        const activeLog = await prisma.workLog.findFirst({
+            where: { employeeId: Number(employeeId), endedAt: null },
+            orderBy: { startedAt: 'desc' }
+        });
+        res.json({ isWorking: !!activeLog, activeLog });
+    } catch (e) { res.status(500).json({ error: 'Błąd statusu' }); }
+});
+
+// 2. ROZPOCZNIJ PRACĘ (Start)
+app.post('/api/work-log/start', async (req, res) => {
+    const { employeeId, source = 'WEB' } = req.body;
+    try {
+        const active = await prisma.workLog.findFirst({ where: { employeeId: Number(employeeId), endedAt: null } });
+        if (active) return res.status(400).json({ error: 'Już pracujesz!' });
+
+        const log = await prisma.workLog.create({
+            data: { employeeId: Number(employeeId), source, startedAt: new Date() }
+        });
+        res.json(log);
+    } catch (e) { res.status(500).json({ error: 'Błąd startu' }); }
+});
+
+// 3. ZAKOŃCZ PRACĘ (Stop)
+app.post('/api/work-log/stop', async (req, res) => {
+    const { employeeId } = req.body;
+    try {
+        const active = await prisma.workLog.findFirst({ where: { employeeId: Number(employeeId), endedAt: null } });
+        if (!active) return res.status(400).json({ error: 'Nie pracujesz.' });
+
+        const log = await prisma.workLog.update({
+            where: { id: active.id },
+            data: { endedAt: new Date() }
+        });
+        res.json(log);
+    } catch (e) { res.status(500).json({ error: 'Błąd stopu' }); }
+});
+
+// 4. HISTORIA PRACY PRACOWNIKA (Do szczegółów)
+app.get('/api/work-log/history/:employeeId', async (req, res) => {
+    const { employeeId } = req.params;
+    try {
+        const logs = await prisma.workLog.findMany({
+            where: { employeeId: Number(employeeId) },
+            orderBy: { startedAt: 'desc' },
+            take: 50 // Ostatnie 50 wpisów
+        });
+        res.json(logs);
+    } catch (e) { res.status(500).json({ error: 'Błąd historii' }); }
+});
+
+// 5. STATYSTYKI OBECNOŚCI (Dla Admin Dashboard)
+app.get('/api/stats/attendance', async (req, res) => {
+    try {
+        const totalEmployees = await prisma.employee.count();
+        
+        // Liczymy aktywnych (endedAt: null)
+        const workingNow = await prisma.workLog.count({
+            where: { endedAt: null }
+        });
+
+        // Liczymy spóźnienia (Start po 9:00 dzisiaj)
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const lateThreshold = new Date();
+        lateThreshold.setHours(9, 15, 0, 0); // Spóźnienie od 9:15
+
+        const lateCount = await prisma.workLog.count({
+            where: {
+                startedAt: { gte: today, gt: lateThreshold }
+            }
+        });
+
+        res.json({
+            total: totalEmployees,
+            present: workingNow,
+            absent: totalEmployees - workingNow,
+            late: lateCount
+        });
+    } catch (e) { res.status(500).json({ error: 'Błąd statystyk' }); }
+});
+
+// 6. EXPORT RCP (CSV) - Masowy eksport dla kadr
+app.get('/api/export/work-logs', async (req, res) => {
+    try {
+        const logs = await prisma.workLog.findMany({
+            include: { employee: true },
+            orderBy: { startedAt: 'desc' }
+        });
+
+        // Generowanie CSV
+        const csvRows = [
+            ['ID', 'Imię', 'Nazwisko', 'Dział', 'Start', 'Koniec', 'Czas (h)'],
+            ...logs.map(log => {
+                const start = new Date(log.startedAt);
+                const end = log.endedAt ? new Date(log.endedAt) : null;
+                const duration = end ? ((end.getTime() - start.getTime()) / (1000 * 60 * 60)).toFixed(2) : 'W trakcie';
+                
+                return [
+                    log.employeeId,
+                    log.employee.firstName,
+                    log.employee.lastName,
+                    log.employee.departmentId || '',
+                    start.toLocaleString(),
+                    end ? end.toLocaleString() : '',
+                    duration
+                ].join(',');
+            })
+        ];
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="rcp_export.csv"');
+        res.send(csvRows.join('\n'));
+    } catch (e) { res.status(500).json({ error: 'Błąd eksportu' }); }
+});
+
 const PORT = 3000;
 app.listen(PORT, () => {
   console.log(`--------------------------------------------------`);

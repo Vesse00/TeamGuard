@@ -1,71 +1,138 @@
-import { Routes, Route, Outlet } from 'react-router-dom';
-import { Toaster } from 'sonner';
-
-// Komponenty stron
-import { LoginPage } from './components/LoginPage';
-import { DashboardHome } from './components/DashboardHome';
-import { EmployeeList } from './components/EmployeeList';
-import { EmployeeDetails } from './components/EmployeeDetails';
-import { EditEmployeePage } from './components/EditEmployeePage';
-import { SettingsPage } from './components/SettingsPage';
-import { ReportsPage } from './components/ReportsPage';
-import { CalendarPage } from './components/CalendarPage';
-import { LogsPage } from './components/LogsPage';
-import { DepartmentsPage } from './components/DepartmentsPage';
-
-// Komponenty nawigacyjne
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { Navbar } from './components/Navbar';
+import { DashboardHome } from './components/DashboardHome';
+import { EmployeeList } from './components/EmployeeList';
+import { AddEmployeeModal } from './components/AddEmployeeModal'; // Jeśli używany bezpośrednio
+import { LoginPage } from './components/LoginPage';
+import { EmployeeDetails } from './components/EmployeeDetails';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { CalendarPage } from './components/CalendarPage';
+import { EditEmployeePage } from './components/EditEmployeePage';
+import { DepartmentsPage } from './components/DepartmentsPage';
+import { ReportsPage } from './components/ReportsPage';
+import { LogsPage } from './components/LogsPage';
+import { SettingsPage } from './components/SettingsPage';
+import { HelpPage } from './components/HelpPage'; // Upewnij się, że masz ten plik (stworzyliśmy go wcześniej)
 
-// --- KOMPONENT LAYOUTU (Wspólny wygląd dla zalogowanych) ---
-const MainLayout = () => {
+// --- KOMPONENT LAYOUT (RAMA APLIKACJI) ---
+// Zawiera pasek boczny i górny. Używany dla zalogowanych stron.
+const Layout = ({ children }: { children: React.ReactNode }) => {
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex">
+    <div className="flex bg-slate-50 min-h-screen font-sans text-slate-900">
       <Sidebar />
-      <main className="ml-64 w-full min-h-screen flex flex-col">
+      <div className="flex-1 ml-64 transition-all duration-300">
         <Navbar />
-        <div className="p-8 flex-1 overflow-hidden">
-          {/* Outlet to miejsce, gdzie renderują się podstrony (Dashboard, Employees itd.) */}
-          <Outlet />
-        </div>
-      </main>
+        <main className="p-8 mt-16">
+          {children}
+        </main>
+      </div>
     </div>
   );
 };
 
+// --- KOMPONENT PRZEKIEROWANIA (HOME) ---
+// Decyduje, gdzie wysłać użytkownika po wejściu na "/"
+const HomeRedirect = () => {
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+
+  if (!user) return <Navigate to="/login" replace />;
+
+  // 1. Jeśli to ADMIN -> Pokaż Dashboard Zarządczy
+  if (user.role === 'ADMIN') {
+      return <DashboardHome />;
+  }
+
+  // 2. Jeśli to PRACOWNIK -> Przekieruj na jego profil
+  if (user.role === 'USER' && user.employeeId) {
+      return <Navigate to={`/employees/${user.employeeId}`} replace />;
+  }
+
+  // Fallback (np. user techniczny bez profilu)
+  return <div className="p-10 text-center text-slate-500">Brak przypisanego profilu pracownika.</div>;
+};
+
 function App() {
   return (
-    <>
-      <Toaster position="top-center" richColors closeButton />
-      
+    <Router>
       <Routes>
-        {/* --- TRASY PUBLICZNE --- */}
+        {/* LOGOWANIE (Bez Layoutu) */}
         <Route path="/login" element={<LoginPage />} />
+        
+        {/* --- STRONA GŁÓWNA (Inteligentne przekierowanie) --- */}
+        <Route path="/" element={
+          <ProtectedRoute>
+            <Layout>
+               <HomeRedirect />
+            </Layout>
+          </ProtectedRoute>
+        } />
 
-        {/* --- TRASY CHRONIONE --- */}
-        {/* 1. Najpierw sprawdzamy czy jest token (ProtectedRoute) */}
-        <Route element={<ProtectedRoute />}>
-          
-          {/* 2. Jeśli jest token, nakładamy Layout (MainLayout) */}
-          <Route element={<MainLayout />}>
-            <Route path="/" element={<DashboardHome />} />
-            <Route path="/employees" element={<EmployeeList />} />
-            <Route path="/employees/:id" element={<EmployeeDetails />} />
-            <Route path="/employees/:id/edit" element={<EditEmployeePage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/logs" element={<LogsPage />} />
-            <Route path="/departments" element={<DepartmentsPage />} />
-          </Route>
+        {/* --- STRONY DLA WSZYSTKICH (User + Admin) --- */}
+        <Route path="/help" element={
+          <ProtectedRoute>
+            <Layout><HelpPage /></Layout>
+          </ProtectedRoute>
+        } />
+        
+        {/* SZCZEGÓŁY PRACOWNIKA */}
+        {/* Dostępne dla każdego, ale w środku EmployeeDetails jest zabezpieczenie, 
+            żeby User nie widział cudzego profilu */}
+        <Route path="/employees/:id" element={
+          <ProtectedRoute>
+            <Layout><EmployeeDetails /></Layout>
+          </ProtectedRoute>
+        } />
 
-        </Route>
+        {/* --- STREFY TYLKO DLA ADMINA (Protected z allowedRoles) --- */}
+        
+        <Route path="/employees" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <Layout><EmployeeList /></Layout>
+          </ProtectedRoute>
+        } />
 
-        {/* Fallback dla nieznanych tras - przekieruj na Dashboard (który przekieruje na login jeśli trzeba) */}
-        <Route path="*" element={<DashboardHome />} />
+        <Route path="/employees/:id/edit" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <Layout><EditEmployeePage /></Layout>
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/calendar" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <Layout><CalendarPage /></Layout>
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/departments" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+             <Layout><DepartmentsPage /></Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/reports" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+             <Layout><ReportsPage /></Layout>
+          </ProtectedRoute>
+        } />
+
+         <Route path="/logs" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+             <Layout><LogsPage /></Layout>
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/settings" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+             <Layout><SettingsPage /></Layout>
+          </ProtectedRoute>
+        } />
+
+        {/* CATCH ALL - Przekieruj na główną */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </>
+    </Router>
   );
 }
 

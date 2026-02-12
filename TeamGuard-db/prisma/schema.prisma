@@ -30,6 +30,8 @@ model Employee {
   onboardingTasks OnboardingTask[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  workLogs        WorkLog[]
 }
 
 model ComplianceEvent {
@@ -128,4 +130,19 @@ model OnboardingTask {
   completed  Boolean  @default(false)
   employeeId Int
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+// --- REJESTRACJA CZASU PRACY (RCP) ---
+model WorkLog {
+  id          Int       @id @default(autoincrement())
+  employeeId  Int
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  startedAt   DateTime  @default(now()) // Moment "odbicia wejścia"
+  endedAt     DateTime?                 // Moment "odbicia wyjścia" (null = wciąż pracuje)
+  
+  type        String    @default("WORK") // WORK (praca), BREAK (przerwa)
+  source      String    @default("WEB")  // WEB, RFID, MOBILE
+  
+  createdAt   DateTime  @default(now())
 }

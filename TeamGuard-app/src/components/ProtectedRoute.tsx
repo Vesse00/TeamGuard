@@ -1,13 +1,28 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
+import type { ReactNode } from 'react';
 
-export function ProtectedRoute() {
-  const token = localStorage.getItem('token');
+interface ProtectedRouteProps {
+  children: ReactNode; // Zmieniono z JSX.Element na ReactNode (standard dla props.children)
+  allowedRoles?: string[];
+}
 
-  // Jeśli nie ma tokena, przekieruj na login
-  if (!token) {
+export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+  const userStr = localStorage.getItem('user');
+  
+  if (!userStr) {
     return <Navigate to="/login" replace />;
   }
 
-  // Jeśli jest, pozwól wejść głębiej (renderuj dzieci - Outlet)
-  return <Outlet />;
+  const user = JSON.parse(userStr);
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // Jeśli user to USER, a wymaga ADMINA -> przekieruj na jego profil
+    if (user.role === 'USER' && user.employeeId) {
+        return <Navigate to={`/employees/${user.employeeId}`} replace />;
+    }
+    // Fallback -> Login lub Dashboard
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
 }
