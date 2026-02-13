@@ -6,6 +6,16 @@ import {
     ChevronLeft, ChevronRight, ArrowDownToLine, Plus, X, Pencil, Trash2, Save 
 } from 'lucide-react';
 
+//TODO-> 1. Dodać paginację lub lazy loading dla pracowników, jeśli będzie ich dużo.
+//      2. Można by dodać możliwość tworzenia "szablonów" grafików, które można potem przypisać do tygodnia.
+//     3. Dodać kolory dla różnych działów, żeby łatwiej było rozróżnić pracowników na grafiku.
+//     4. Możliwość masowego przypisywania pracowników do zmiany (np. zaznacz kilku i przeciągnij razem).
+//    5. Dodać widok tygodniowy/miesięczny, gdzie widać grafik w formie kalendarza, a nie tylko listy zmian.
+//     6. Dodać możliwość eksportu grafiku do PDF lub Excel, żeby można było go łatwo udostępnić lub wydrukować.
+//     7. Dodać powiadomienia dla pracowników, gdy zostaną przypisani lub przeniesieni na inną zmianę.
+//    8. Zabezpieczyć aby użytkownik nie miał podglądu wszystkich pracowników, a tylko swój własny grafik (dla zwykłych pracowników).
+
+
 // --- TYPY ---
 interface Employee {
     id: number;
