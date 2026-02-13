@@ -390,13 +390,13 @@ app.post('/api/employees/:id/invite', async (req, res) => {
 // --- PUT: Edycja danych pracownika (Z PEŁNYM LOGOWANIEM) ---
 app.put('/api/employees/:id', async (req, res) => {
   const { id } = req.params;
-  const { firstName, lastName, position, email, hiredAt, departmentId, adminId } = req.body; // Pamiętaj, by frontend wysyłał adminId!
+  const { firstName, lastName, position, email, hiredAt, departmentId, adminId, shiftId } = req.body; // Pamiętaj, by frontend wysyłał adminId!
 
   try {
     // 1. Pobierz stare dane
     const oldEmp = await prisma.employee.findUnique({ 
       where: { id: Number(id) },
-      include: { department: true } // Pobieramy też dział dla logów);
+      include: { department: true, shift: true } // Pobieramy też dział dla logów);
       });
     if (!oldEmp) return res.status(404).json({ error: 'Pracownik nie istnieje' });
 
@@ -405,6 +405,7 @@ app.put('/api/employees/:id', async (req, res) => {
       where: { id: Number(id) },
       data: { firstName, lastName, position, email, 
         departmentId: departmentId ? Number(departmentId) : null,
+        shiftId: shiftId ? Number(shiftId) : null,
         hiredAt: new Date(hiredAt) }
     });
 
@@ -430,13 +431,25 @@ app.put('/api/employees/:id', async (req, res) => {
             }
 
             changes.push(`Dział: ${oldDeptName} -> ${newDeptName}`);
-        
-          if (changes.length > 0) {
+        }
+
+        // Logika zmian grafiku (Shift)
+        const newShiftId = shiftId ? Number(shiftId) : null;
+        if (oldEmp.shiftId !== newShiftId) {
+             const oldShiftName = oldEmp.shift?.name || 'Brak';
+             let newShiftName = 'Brak';
+             if (newShiftId) {
+                 const s = await prisma.shift.findUnique({ where: { id: newShiftId } });
+                 if (s) newShiftName = s.name;
+             }
+             changes.push(`Grafik: ${oldShiftName} -> ${newShiftName}`);
+        }
+
+        if (changes.length > 0) {
               const msg = `Edytowano dane pracownika ${firstName} ${lastName}. Zmiany: ${changes.join(', ')}`;
               // Używamy naszej funkcji pomocniczej
               await logAndNotifyAll(Number(adminId), "Edycja Danych", msg, `/employees/${id}`, Number(id));
           }
-        }
     }
 
     res.json(updated);

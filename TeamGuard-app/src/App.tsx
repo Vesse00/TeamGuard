@@ -14,6 +14,7 @@ import { ReportsPage } from './components/ReportsPage';
 import { LogsPage } from './components/LogsPage';
 import { SettingsPage } from './components/SettingsPage';
 import { HelpPage } from './components/HelpPage'; // Upewnij się, że masz ten plik (stworzyliśmy go wcześniej)
+import { Toaster } from 'sonner';
 
 // --- KOMPONENT LAYOUT (RAMA APLIKACJI) ---
 // Zawiera pasek boczny i górny. Używany dla zalogowanych stron.
@@ -56,6 +57,7 @@ const HomeRedirect = () => {
 function App() {
   return (
     <Router>
+      <Toaster position="top-center" richColors closeButton />
       <Routes>
         {/* LOGOWANIE (Bez Layoutu) */}
         <Route path="/login" element={<LoginPage />} />
@@ -79,6 +81,7 @@ function App() {
           <ProtectedRoute>
             <Layout><SchedulePage /></Layout>
           </ProtectedRoute>
+          
         } />
         
         {/* SZCZEGÓŁY PRACOWNIKA */}
