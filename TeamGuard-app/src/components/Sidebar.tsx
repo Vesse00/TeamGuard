@@ -67,14 +67,22 @@ export function Sidebar() {
                 <Link to="/departments" className={getLinkClass('/departments')}>
                     <Building size={20} /> Działy
                 </Link>
+                <Link to="/schedule" className={getLinkClass('/schedule')}>
+                    <Calendar size={20} /> Grafik
+                </Link>
             </>
         )}
 
         {/* --- MENU DLA ZWYKŁEGO USERA --- */}
         {!isAdmin && user?.employeeId && (
-            <Link to={`/employees/${user.employeeId}`} className={getLinkClass(`/employees/${user.employeeId}`)}>
-                <UserCircle size={20} /> Mój Profil
-            </Link>
+            <>
+                <Link to={`/employees/${user.employeeId}`} className={getLinkClass(`/employees/${user.employeeId}`)}>
+                    <UserCircle size={20} /> Mój Profil
+                </Link>
+                <Link to="/schedule" className={getLinkClass('/schedule')}>
+                    <Calendar size={20} /> Grafik
+                </Link>
+            </>
         )}
 
         {/* --- ROZWIJANE MENU "INNE" (TYLKO ADMIN) --- */}

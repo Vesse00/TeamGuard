@@ -195,7 +195,7 @@ app.get('/api/employees/:id', async (req, res) => {
 
 // --- POST: Dodaj pracownika (Z LOGOWANIEM) ---
 app.post('/api/employees', async (req, res) => {
-  const { firstName, lastName, position, email, hiredAt, departmentId, adminId } = req.body;
+  const { firstName, lastName, position, email, hiredAt, departmentId, adminId, shiftId } = req.body;
   
   // Helpery (bez zmian)
   const getInitials = (f: string, l: string) => `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
@@ -242,6 +242,7 @@ app.post('/api/employees', async (req, res) => {
         hiredAt: new Date(hiredAt),
         avatarInitials: getInitials(firstName, lastName),
         userId: newUser.id, // <--- ŁĄCZYMY KONTA
+        shiftId: shiftId ? Number(shiftId) : null,
         compliance: {
             create: [
                 { name: 'Szkolenie BHP', type: 'MANDATORY', status: 'VALID', issueDate: new Date(hiredAt), duration: '0.5', expiryDate: calculateExpiry(new Date(hiredAt), '0.5') },
@@ -504,7 +505,14 @@ app.get('/api/employees', async (req, res) => {
   try {
     const emps = await prisma.employee.findMany({ 
         where, 
-        include: { compliance: true, department: true }, 
+        include: { 
+          compliance: true,
+          department: true,
+          shift: true,
+          workLogs: {
+            orderBy: { startedAt: 'desc' },
+            take: 1 // Pobieramy tylko ostatni log pracy
+          }}, 
         orderBy: { createdAt: 'desc' } 
     });
     res.json(emps);
@@ -1711,6 +1719,26 @@ app.get('/api/export/work-logs', async (req, res) => {
         res.setHeader('Content-Disposition', 'attachment; filename="rcp_export.csv"');
         res.send(csvRows.join('\n'));
     } catch (e) { res.status(500).json({ error: 'Błąd eksportu' }); }
+});
+
+// --- ZMIANY (SHIFTS) ---
+app.get('/api/shifts', async (req, res) => {
+    const shifts = await prisma.shift.findMany();
+    res.json(shifts);
+});
+
+app.post('/api/shifts', async (req, res) => {
+    const { name, startTime, endTime } = req.body;
+    const shift = await prisma.shift.create({
+        data: { name, startTime, endTime }
+    });
+    res.json(shift);
+});
+
+app.delete('/api/shifts/:id', async (req, res) => {
+    const { id } = req.params;
+    await prisma.shift.delete({ where: { id: Number(id) } });
+    res.json({ success: true });
 });
 
 const PORT = 3000;

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
-import { Calendar, ShieldCheck, Stethoscope, ChevronDown, UserPlus, Briefcase, Building } from 'lucide-react';
+import { Calendar, ShieldCheck, Stethoscope, ChevronDown, UserPlus, Briefcase, Building, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -43,8 +43,11 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
     bhpStartDate: getToday(),
     bhpDuration: '0.5',
     medicalStartDate: getToday(),
-    medicalDuration: '2'
+    medicalDuration: '2',
+    shiftId: '',
   });
+
+  const [shifts, setShifts] = useState<any[]>([]);
 
   // Pobieranie listy działów przy otwarciu
   useEffect(() => {
@@ -52,6 +55,8 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
           axios.get('http://localhost:3000/api/departments')
               .then(res => setDepartments(res.data))
               .catch(err => console.error("Błąd pobierania działów", err));
+          axios.get('http://localhost:3000/api/shifts')
+            .then(res => setShifts(res.data));
       }
   }, [isOpen]);
 
@@ -113,7 +118,8 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
         bhpDuration: '0.5',
         medicalStartDate: getToday(), 
         departmentId: '',
-        medicalDuration: '2'
+        medicalDuration: '2',
+        shiftId: '',
       });
       setIsPermissionsOpen(false);
     } catch (error: any) {
@@ -192,7 +198,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
                         <Building size={12} /> Dział
                     </label>
                     <select 
-                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all font-medium appearance-none cursor-pointer"
+                            className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-medium appearance-none cursor-pointer"
                             value={formData.departmentId}
                             onChange={e => setFormData({...formData, departmentId: e.target.value})}
                         >
@@ -203,7 +209,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
                     </select>
                 </div>
             </div>
-              <div className="space-y-2">
+              {/*<div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">Data Zatrudnienia</label>
                 <div className="relative">
                   <input 
@@ -212,6 +218,27 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
                     value={formData.hiredAt}
                     onChange={e => setFormData({...formData, hiredAt: e.target.value})}
                   />
+                </div>
+              </div>*/}
+              {/* SEKACJA: DATA + ZMIANA (OBOK SIEBIE) */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Data zatrudnienia</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-3 text-slate-400" size={18} />
+                    <input required type="date" name="hiredAt" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-3 pl-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500/10 outline-none transition-all text-sm" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Zmiana (Grafik)</label>
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-3 text-slate-400" size={18} />
+                    <select required name="shiftId" value={formData.shiftId} onChange={e => setFormData({...formData, shiftId: e.target.value})} className="w-full p-3 pl-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm appearance-none">
+                      <option value="">Wybierz</option>
+                      {shifts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-3 text-slate-400 pointer-events-none" size={18} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -225,6 +252,7 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
                 onChange={e => setFormData({...formData, email: e.target.value})}
               />
             </div>
+            
 
             <div className="border-t border-slate-100 my-6"></div>
 

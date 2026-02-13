@@ -3,7 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { Navbar } from './components/Navbar';
 import { DashboardHome } from './components/DashboardHome';
 import { EmployeeList } from './components/EmployeeList';
-import { AddEmployeeModal } from './components/AddEmployeeModal'; // Jeśli używany bezpośrednio
+import { SchedulePage } from './components/SchedulePage';
 import { LoginPage } from './components/LoginPage';
 import { EmployeeDetails } from './components/EmployeeDetails';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -73,6 +73,11 @@ function App() {
         <Route path="/help" element={
           <ProtectedRoute>
             <Layout><HelpPage /></Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/schedule" element={
+          <ProtectedRoute>
+            <Layout><SchedulePage /></Layout>
           </ProtectedRoute>
         } />
         

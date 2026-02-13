@@ -205,11 +205,6 @@ export function EmployeeDetails() {
     } catch (e) { toast.error('Błąd odnawiania'); }
   };
 
-  const handleDeleteCompliance = async (compId: number) => {
-      if(!confirm("Usunąć?")) return;
-      try { await axios.delete(`http://localhost:3000/api/compliance/${compId}?adminId=${currentUser.id}`); toast.success("Usunięto."); fetchEmployee(); } 
-      catch(e) { toast.error("Błąd usuwania"); }
-  }
 
   if (loading || !employee) return <div className="p-10 text-center text-slate-400">Ładowanie...</div>;
 

@@ -32,6 +32,10 @@ model Employee {
   updatedAt   DateTime  @updatedAt
 
   workLogs        WorkLog[]
+
+  // RELACJA: Zmiana (Wiele:1)
+  shiftId         Int?
+  shift           Shift?      @relation(fields: [shiftId], references: [id])
 }
 
 model ComplianceEvent {
@@ -145,4 +149,13 @@ model WorkLog {
   source      String    @default("WEB")  // WEB, RFID, MOBILE
   
   createdAt   DateTime  @default(now())
+}
+
+// 1. NOWY MODEL: ZMIANA
+model Shift {
+  id        Int        @id @default(autoincrement())
+  name      String     // np. "I Zmiana", "Biuro", "Nocna"
+  startTime String     // np. "06:00"
+  endTime   String     // np. "14:00"
+  employees Employee[]
 }
