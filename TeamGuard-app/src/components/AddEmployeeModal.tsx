@@ -15,10 +15,17 @@ interface Department {
     name: string;
 }
 
+interface Shift {
+    id: number;
+    name: string;
+    departmentId: number | null;
+}
+
 export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
   
   const getToday = () => new Date().toISOString().split('T')[0];
 
@@ -47,9 +54,6 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
     shiftId: '',
   });
 
-  const [shifts, setShifts] = useState<any[]>([]);
-
-  // Pobieranie listy działów przy otwarciu
   useEffect(() => {
       if (isOpen) {
           axios.get('http://localhost:3000/api/departments')
@@ -59,6 +63,16 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
             .then(res => setShifts(res.data));
       }
   }, [isOpen]);
+
+  // --- POPRAWIONE FILTROWANIE (ŚCISŁE) ---
+  const filteredShifts = shifts.filter(shift => {
+      // Jeśli nie wybrano działu, pokazujemy wszystkie (żeby można było wybrać cokolwiek)
+      if (!formData.departmentId) return true;
+      
+      // Jeśli wybrano dział, pokazujemy TYLKO zmiany tego działu.
+      // USUNIĘTO: || shift.departmentId === null (Zmiany ogólne też znikają)
+      return shift.departmentId === Number(formData.departmentId);
+  });
 
   const handleNameChange = (field: 'firstName' | 'lastName', value: string) => {
     const capitalized = value.length > 0 
@@ -71,39 +85,21 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
     e.preventDefault();
     setLoading(true);
 
-    // 1. Pobierz ID zalogowanego admina
     const userStr = localStorage.getItem('user');
     const adminId = userStr ? JSON.parse(userStr).id : null;
 
-    // --- ZMIANA: WALIDACJA EMAIL ---
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
         toast.error('Nieprawidłowy format adresu e-mail (np. jan@firma.pl).');
         setLoading(false);
         return;
     }
-    // ---------------------------------
-
-    
-    const finalBhpDate = calculateEndDate(formData.bhpStartDate, formData.bhpDuration);
-    const finalMedicalDate = calculateEndDate(formData.medicalStartDate, formData.medicalDuration);
-
-    /*const apiPayload = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        position: formData.position,
-        email: formData.email,
-        hiredAt: formData.hiredAt,
-        departmentId: formData.departmentId,
-        bhpDate: finalBhpDate,
-        medicalDate: finalMedicalDate,
-        adminId: adminId
-    };*/
 
     try {
       await axios.post('http://localhost:3000/api/employees', {
         ...formData,
         departmentId: formData.departmentId ? Number(formData.departmentId) : undefined,
+        shiftId: formData.shiftId ? Number(formData.shiftId) : undefined,
         adminId,
       });
       setLoading(false);
@@ -177,7 +173,6 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-             {/* STANOWISKO I DZIAŁ (OBOK SIEBIE) */}
             <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
@@ -192,7 +187,6 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
                     />
                 </div>
                 
-                {/* --- NOWE POLE DZIAŁU --- */}
                 <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
                         <Building size={12} /> Dział
@@ -200,7 +194,11 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
                     <select 
                             className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-medium appearance-none cursor-pointer"
                             value={formData.departmentId}
-                            onChange={e => setFormData({...formData, departmentId: e.target.value})}
+                            onChange={e => setFormData({
+                                ...formData, 
+                                departmentId: e.target.value,
+                                shiftId: '' // Reset
+                            })}
                         >
                             <option value="">-- Wybierz --</option>
                             {departments.map(dept => (
@@ -209,33 +207,32 @@ export function AddEmployeeModal({ isOpen, onClose, onSuccess }: Props) {
                     </select>
                 </div>
             </div>
-              {/*<div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">Data Zatrudnienia</label>
-                <div className="relative">
-                  <input 
-                    required type="date"
-                    className="w-full h-12 border border-slate-300 rounded-xl pl-3 pr-4 text-sm font-medium focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-slate-700 cursor-pointer"
-                    value={formData.hiredAt}
-                    onChange={e => setFormData({...formData, hiredAt: e.target.value})}
-                  />
-                </div>
-              </div>*/}
-              {/* SEKACJA: DATA + ZMIANA (OBOK SIEBIE) */}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Data zatrudnienia</label>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-3 text-slate-400" size={18} />
-                    <input required type="date" name="hiredAt" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-3 pl-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500/10 outline-none transition-all text-sm" />
+                    <input required type="date" name="hiredAt" value={formData.hiredAt} onChange={e => setFormData({...formData, hiredAt: e.target.value})} className="w-full p-3 pl-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500/10 outline-none transition-all text-sm" />
                   </div>
                 </div>
+                
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Zmiana (Grafik)</label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-3 text-slate-400" size={18} />
-                    <select required name="shiftId" value={formData.shiftId} onChange={e => setFormData({...formData, shiftId: e.target.value})} className="w-full p-3 pl-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm appearance-none">
+                    <select 
+                        required 
+                        name="shiftId" 
+                        value={formData.shiftId} 
+                        onChange={e => setFormData({...formData, shiftId: e.target.value})} 
+                        className="w-full p-3 pl-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm appearance-none"
+                    >
                       <option value="">Wybierz</option>
-                      {shifts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      {/* Tutaj mapujemy filteredShifts */}
+                      {filteredShifts.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-3 text-slate-400 pointer-events-none" size={18} />
                   </div>

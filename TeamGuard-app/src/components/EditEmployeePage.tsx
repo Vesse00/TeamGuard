@@ -27,6 +27,7 @@ interface Shift {
     name: string;
     startTime: string;
     endTime: string;
+    departmentId: number | null;
 }
 
 const getAdminId = () => {
@@ -144,6 +145,12 @@ export function EditEmployeePage() {
   };
 
   useEffect(() => { fetchData(); }, [id]);
+
+  // --- POPRAWIONE FILTROWANIE (ŚCISŁE) ---
+  const filteredShifts = shifts.filter(shift => {
+      if (!formData.departmentId) return true;
+      return shift.departmentId === Number(formData.departmentId);
+  });
 
   // --- ZAPIS PROFILU (POPRAWIONY) ---
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -336,7 +343,11 @@ export function EditEmployeePage() {
                         <select
                             name="departmentId"
                             value={formData.departmentId}
-                            onChange={e => setFormData({ ...formData, departmentId: e.target.value })}
+                            onChange={e => setFormData({ 
+                                ...formData, 
+                                departmentId: e.target.value,
+                                shiftId: '' // RESET ZMIANY
+                            })}
                             className="w-full pl-9 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer font-medium"
                         >
                             <option value="">-- Brak działu --</option>
@@ -347,7 +358,7 @@ export function EditEmployeePage() {
                     </div>
                 </div>
                 
-                {/* ZMIANA (GRAFIK) */}
+                {/* ZMIANA (GRAFIK) - FILTROWANA */}
                 <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Zmiana (Grafik)</label>
                     <div className="relative">
@@ -359,7 +370,7 @@ export function EditEmployeePage() {
                             className="w-full pl-9 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer font-medium"
                         >
                             <option value="">-- Brak przypisania --</option>
-                            {shifts.map(shift => (
+                            {filteredShifts.map(shift => (
                                 <option key={shift.id} value={shift.id}>{shift.name} ({shift.startTime}-{shift.endTime})</option>
                             ))}
                         </select>
