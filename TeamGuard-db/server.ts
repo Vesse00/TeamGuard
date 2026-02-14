@@ -1797,6 +1797,28 @@ app.delete('/api/shifts/:id', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Błąd usuwania"}); }
 });
 
+// --- GET: Pobierz logi pracy dla konkretnego pracownika (Dla UserSchedulePage) ---
+app.get('/api/work-logs', async (req, res) => {
+    const { employeeId } = req.query;
+    
+    if (!employeeId) {
+        return res.status(400).json({ error: 'Brak ID pracownika' });
+    }
+
+    try {
+        const logs = await prisma.workLog.findMany({
+            where: { 
+                employeeId: Number(employeeId) 
+            },
+            orderBy: { startedAt: 'desc' }
+        });
+        res.json(logs);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Błąd pobierania logów pracy' });
+    }
+});
+
 const PORT = 3000;
 app.listen(PORT, () => {
   console.log(`--------------------------------------------------`);

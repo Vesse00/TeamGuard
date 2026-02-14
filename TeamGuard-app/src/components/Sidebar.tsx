@@ -79,8 +79,8 @@ export function Sidebar() {
                 <Link to={`/employees/${user.employeeId}`} className={getLinkClass(`/employees/${user.employeeId}`)}>
                     <UserCircle size={20} /> Mój Profil
                 </Link>
-                <Link to="/schedule" className={getLinkClass('/schedule')}>
-                    <Calendar size={20} /> Grafik
+                <Link to="/userSchedule" className={getLinkClass('/userSchedule')}>
+                    <Calendar size={20} /> Mój Grafik
                 </Link>
             </>
         )}

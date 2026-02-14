@@ -14,6 +14,7 @@ import { ReportsPage } from './components/ReportsPage';
 import { LogsPage } from './components/LogsPage';
 import { SettingsPage } from './components/SettingsPage';
 import { HelpPage } from './components/HelpPage'; // Upewnij się, że masz ten plik (stworzyliśmy go wcześniej)
+import { UserSchedulePage } from './components/UserSchedulePage';
 import { Toaster } from 'sonner';
 
 // --- KOMPONENT LAYOUT (RAMA APLIKACJI) ---
@@ -46,9 +47,9 @@ const HomeRedirect = () => {
   }
 
   // 2. Jeśli to PRACOWNIK -> Przekieruj na jego profil
-  if (user.role === 'USER' && user.employeeId) {
+  /*if (user.role === 'USER' && user.employeeId) {
       return <Navigate to={`/employees/${user.employeeId}`} replace />;
-  }
+  }*/
 
   // Fallback (np. user techniczny bez profilu)
   return <div className="p-10 text-center text-slate-500">Brak przypisanego profilu pracownika.</div>;
@@ -77,12 +78,7 @@ function App() {
             <Layout><HelpPage /></Layout>
           </ProtectedRoute>
         } />
-        <Route path="/schedule" element={
-          <ProtectedRoute>
-            <Layout><SchedulePage /></Layout>
-          </ProtectedRoute>
-          
-        } />
+        
         
         {/* SZCZEGÓŁY PRACOWNIKA */}
         {/* Dostępne dla każdego, ale w środku EmployeeDetails jest zabezpieczenie, 
@@ -93,12 +89,27 @@ function App() {
           </ProtectedRoute>
         } />
 
+        <Route path="/userSchedule" element={
+          <ProtectedRoute allowedRoles={["USER"]}>
+            <Layout>
+              <UserSchedulePage/>
+            </Layout>
+          </ProtectedRoute>
+        } />
+
         {/* --- STREFY TYLKO DLA ADMINA (Protected z allowedRoles) --- */}
         
         <Route path="/employees" element={
           <ProtectedRoute allowedRoles={['ADMIN']}>
             <Layout><EmployeeList /></Layout>
           </ProtectedRoute>
+        } />
+
+        <Route path="/schedule" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <Layout><SchedulePage /></Layout>
+          </ProtectedRoute>
+          
         } />
 
         <Route path="/employees/:id/edit" element={
