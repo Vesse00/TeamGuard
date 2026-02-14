@@ -1,22 +1,17 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { 
-    Clock, Users, GripVertical, AlertCircle, Calendar, Filter, Settings, 
-    ChevronLeft, ChevronRight, ArrowDownToLine, Plus, X, Pencil, Trash2, Save 
+    Clock, Users, GripVertical, AlertCircle, Calendar, Settings, 
+    ChevronLeft, ChevronRight, ArrowDownToLine, Plus, X, Pencil, Trash2, Save, Filter, Layers 
 } from 'lucide-react';
 
-//TODO-> 1. Dodać paginację lub lazy loading dla pracowników, jeśli będzie ich dużo.
-//      2. Można by dodać możliwość tworzenia "szablonów" grafików, które można potem przypisać do tygodnia.
-//     3. Dodać kolory dla różnych działów, żeby łatwiej było rozróżnić pracowników na grafiku.
-//     4. Możliwość masowego przypisywania pracowników do zmiany (np. zaznacz kilku i przeciągnij razem).
-//    5. Dodać widok tygodniowy/miesięczny, gdzie widać grafik w formie kalendarza, a nie tylko listy zmian.
-//     6. Dodać możliwość eksportu grafiku do PDF lub Excel, żeby można było go łatwo udostępnić lub wydrukować.
-//     7. Dodać powiadomienia dla pracowników, gdy zostaną przypisani lub przeniesieni na inną zmianę.
-//    8. Zabezpieczyć aby użytkownik nie miał podglądu wszystkich pracowników, a tylko swój własny grafik (dla zwykłych pracowników).
-
-
 // --- TYPY ---
+interface Department {
+    id: number;
+    name: string;
+}
+
 interface Employee {
     id: number;
     firstName: string;
@@ -26,7 +21,7 @@ interface Employee {
     departmentId: number | null;
     shiftId: number | null;
     hiredAt: string;
-    department?: { name: string };
+    department?: { id: number; name: string };
     shift?: { name: string; startTime: string; endTime: string };
     avatarInitials?: string;
 }
@@ -36,6 +31,8 @@ interface Shift {
     name: string;
     startTime: string;
     endTime: string;
+    departmentId: number | null;
+    department?: { name: string };
 }
 
 const getAdminId = () => {
@@ -43,11 +40,18 @@ const getAdminId = () => {
     return u ? JSON.parse(u).id : null;
 };
 
+// ILE ZMIAN WYŚWIETLAMY NARAZ (Karuzela)
+const VISIBLE_SHIFTS_COUNT = 4;
+
 export function SchedulePage() {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [shifts, setShifts] = useState<Shift[]>([]);
+    const [departments, setDepartments] = useState<Department[]>([]);
     const [loading, setLoading] = useState(true);
     
+    // Filtrowanie
+    const [selectedDeptId, setSelectedDeptId] = useState<number | 'all'>('all');
+
     // Drag & Drop
     const [draggedEmpId, setDraggedEmpId] = useState<number | null>(null);
     const [isDraggingOver, setIsDraggingOver] = useState<number | 'unassigned' | 'floating-unassigned' | null>(null);
@@ -55,16 +59,19 @@ export function SchedulePage() {
     // Modal
     const [isManageModalOpen, setIsManageModalOpen] = useState(false);
 
-    // Scroll Ref
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    // Karuzela - indeks początkowy
+    const [viewStartIndex, setViewStartIndex] = useState(0);
 
     const fetchData = async () => {
         try {
-            const [empRes, shiftRes] = await Promise.all([
+            const [empRes, shiftRes, deptRes] = await Promise.all([
                 axios.get('http://localhost:3000/api/employees'),
-                axios.get('http://localhost:3000/api/shifts')
+                axios.get('http://localhost:3000/api/shifts'),
+                axios.get('http://localhost:3000/api/departments')
             ]);
             setEmployees(empRes.data);
+            setDepartments(deptRes.data);
+            
             const sortedShifts = shiftRes.data.sort((a: Shift, b: Shift) => 
                 a.startTime.localeCompare(b.startTime)
             );
@@ -77,15 +84,44 @@ export function SchedulePage() {
 
     useEffect(() => { fetchData(); }, []);
 
-    // --- LOGIKA SCROLLA ---
-    const scroll = (direction: 'left' | 'right') => {
-        if (scrollContainerRef.current) {
-            const { current } = scrollContainerRef;
-            const scrollAmount = 300; // Szerokość kolumny (280px) + gap (20px)
-            current.scrollBy({
-                left: direction === 'left' ? -scrollAmount : scrollAmount,
-                behavior: 'smooth'
-            });
+    // --- RESET KARUZELI PRZY ZMIANIE FILTRA ---
+    useEffect(() => {
+        setViewStartIndex(0);
+    }, [selectedDeptId]);
+
+    // --- 1. FILTROWANIE PRACOWNIKÓW (Wewnątrz kolumn) ---
+    const getFilteredEmployees = (empList: Employee[]) => {
+        if (selectedDeptId === 'all') return empList;
+        return empList.filter(e => e.departmentId === Number(selectedDeptId));
+    };
+
+    // --- 2. FILTROWANIE KOLUMN ZMIAN (POPRAWIONE - ŚCISŁE) ---
+    const filteredShifts = shifts.filter(shift => {
+        // Jeśli wybrano "Wszystkie działy", pokazujemy wszystko (przypisane i ogólne)
+        if (selectedDeptId === 'all') return true;
+        
+        // Jeśli wybrano konkretny dział, pokazujemy TYLKO zmiany tego działu.
+        // Zmiany ogólne (null) są ukrywane.
+        return shift.departmentId === Number(selectedDeptId);
+    });
+
+    // --- 3. OBLICZANIE WIDOCZNYCH ZMIAN (KARUZELA) ---
+    const visibleShifts = filteredShifts.slice(viewStartIndex, viewStartIndex + VISIBLE_SHIFTS_COUNT);
+    
+    // Logika strzałek
+    const canScrollLeft = viewStartIndex > 0;
+    const canScrollRight = viewStartIndex + VISIBLE_SHIFTS_COUNT < filteredShifts.length;
+
+    // --- NAWIGACJA KARUZELI ---
+    const handleNext = () => {
+        if (canScrollRight) {
+            setViewStartIndex(prev => prev + 1);
+        }
+    };
+
+    const handlePrev = () => {
+        if (canScrollLeft) {
+            setViewStartIndex(prev => prev - 1);
         }
     };
 
@@ -131,9 +167,10 @@ export function SchedulePage() {
     if (loading) return <div className="p-10 text-center text-slate-500">Ładowanie grafiku...</div>;
 
     const unassignedEmployees = employees.filter(e => !e.shiftId);
+    const visibleUnassigned = getFilteredEmployees(unassignedEmployees);
     
     return (
-        <div className="flex flex-col h-[calc(100vh-120px)] w-full max-w-full relative overflow-hidden">
+        <div className="flex flex-col h-[calc(100vh-100px)] w-full max-w-full overflow-hidden relative">
             
             {/* HEADER */}
             <div className="flex justify-between items-center mb-4 px-1 shrink-0">
@@ -143,17 +180,32 @@ export function SchedulePage() {
                     </h1>
                     <p className="text-slate-500 text-sm mt-1">Przeciągaj pracowników między kolumnami.</p>
                 </div>
-                <div className="flex gap-3">
+                
+                <div className="flex items-center gap-3">
+                    <div className="relative">
+                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <select 
+                            value={selectedDeptId}
+                            onChange={(e) => setSelectedDeptId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                            className="pl-9 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer shadow-sm hover:border-blue-300 transition-colors"
+                        >
+                            <option value="all">Wszystkie działy</option>
+                            {departments.map(dept => (
+                                <option key={dept.id} value={dept.id}>{dept.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="h-6 w-px bg-slate-200 mx-1"></div>
                     <button onClick={() => setIsManageModalOpen(true)} className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-slate-50 transition-colors shadow-sm">
-                        <Settings size={16}/> Zarządzaj Zmianami
+                        <Settings size={16}/> Edytuj Zmiany
                     </button>
                 </div>
             </div>
 
-            {/* --- GŁÓWNY UKŁAD (STAŁY LEWY + PRZEWIJANY PRAWY) --- */}
+            {/* --- GŁÓWNY UKŁAD --- */}
             <div className="flex-1 flex gap-6 overflow-hidden pb-2 w-full">
                 
-                {/* 1. LEWA STRONA: NIEPRZYPISANI (Sidebar - zawsze widoczny, stała szerokość) */}
+                {/* 1. LEWA STRONA: NIEPRZYPISANI */}
                 <div 
                     onDragOver={(e) => handleDragOver(e, 'unassigned')}
                     onDrop={() => handleDrop(null)}
@@ -161,92 +213,113 @@ export function SchedulePage() {
                         isDraggingOver === 'unassigned' ? 'border-blue-400 bg-blue-50/30' : ''
                     }`}
                 >
-                    {/* Header */}
                     <div className="p-3 border-b border-slate-100 bg-slate-50/80 rounded-t-xl flex justify-between items-center">
                         <div className="flex items-center gap-2">
                             <div className="p-1.5 bg-slate-200 rounded-lg text-slate-600"><AlertCircle size={16} /></div>
                             <div>
                                 <h3 className="font-bold text-slate-700 text-xs uppercase tracking-wide">Nieprzypisani</h3>
+                                {selectedDeptId !== 'all' && <span className="text-[9px] text-blue-600 font-bold block">Filtr: {departments.find(d => d.id === selectedDeptId)?.name}</span>}
                             </div>
                         </div>
-                        <span className="bg-white px-2 py-0.5 rounded text-[10px] font-bold text-slate-600 border border-slate-200">{unassignedEmployees.length}</span>
+                        <span className="bg-white px-2 py-0.5 rounded text-[10px] font-bold text-slate-600 border border-slate-200">
+                            {visibleUnassigned.length} <span className="text-slate-300 font-normal">/ {unassignedEmployees.length}</span>
+                        </span>
                     </div>
-                    {/* List */}
                     <div className="flex-1 p-2 overflow-y-auto space-y-2 custom-scrollbar">
-                        {unassignedEmployees.map(emp => <EmployeeCard key={emp.id} employee={emp} onDragStart={() => handleDragStart(emp.id)} mini />)}
-                        {unassignedEmployees.length === 0 && <div className="h-20 flex items-center justify-center text-slate-300 text-xs italic">Pusto</div>}
+                        {visibleUnassigned.map(emp => <EmployeeCard key={emp.id} employee={emp} onDragStart={() => handleDragStart(emp.id)} mini />)}
+                        {visibleUnassigned.length === 0 && <div className="h-20 flex items-center justify-center text-slate-300 text-xs italic">Pusto</div>}
                     </div>
                 </div>
 
-                {/* 2. PRAWA STRONA: ZMIANY (Kontener elastyczny w-0 zapobiega rozpychaniu strony) */}
-                <div className="flex-1 w-0 relative flex flex-col bg-slate-50/50 rounded-xl border border-slate-200/50 p-2">
+                {/* 2. PRAWA STRONA: ZMIANY (KARUZELA) */}
+                <div className="flex-1 min-w-0 relative flex flex-col bg-slate-50/50 rounded-xl border border-slate-200/50 p-2 group/arrows">
                     
                     {/* STRZAŁKI NAWIGACYJNE */}
-                    {shifts.length > 0 && (
+                    {filteredShifts.length > VISIBLE_SHIFTS_COUNT && (
                         <>
                             <button 
-                                onClick={() => scroll('left')} 
-                                className="absolute left-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/90 backdrop-blur-md border border-slate-200 rounded-full shadow-lg text-slate-600 hover:text-blue-600 hover:scale-110 transition-all "
-                                title="Przewiń w lewo"
+                                onClick={handlePrev}
+                                disabled={!canScrollLeft}
+                                className={`absolute left-2 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full shadow-lg border transition-all 
+                                    ${canScrollLeft 
+                                        ? 'bg-white text-slate-600 border-slate-200 hover:text-blue-600 hover:scale-110 cursor-pointer' 
+                                        : 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed opacity-50'}`}
                             >
                                 <ChevronLeft size={24} />
                             </button>
+
                             <button 
-                                onClick={() => scroll('right')} 
-                                className="absolute right-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/90 backdrop-blur-md border border-slate-200 rounded-full shadow-lg text-slate-600 hover:text-blue-600 hover:scale-110 transition-all "
-                                title="Przewiń w prawo"
+                                onClick={handleNext}
+                                disabled={!canScrollRight}
+                                className={`absolute right-2 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full shadow-lg border transition-all 
+                                    ${canScrollRight 
+                                        ? 'bg-white text-slate-600 border-slate-200 hover:text-blue-600 hover:scale-110 cursor-pointer' 
+                                        : 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed opacity-50'}`}
                             >
                                 <ChevronRight size={24} />
                             </button>
                         </>
                     )}
 
-                    {/* KONTENER PRZEWIJANIA (Overflow Auto) */}
-                    <div 
-                        ref={scrollContainerRef}
-                        className="flex gap-5 h-full overflow-x-auto px-6 pb-2 no-scrollbar snap-x snap-mandatory scroll-smooth items-start w-full"
-                        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                    >
-                        {shifts.map(shift => {
-                            const shiftEmployees = employees.filter(e => e.shiftId === shift.id);
+                    {/* KONTENER KOLUMN */}
+                    <div className="flex gap-4 h-full px-12 pb-2 w-full justify-start items-stretch">
+                        {visibleShifts.map(shift => {
+                            const allShiftEmployees = employees.filter(e => e.shiftId === shift.id);
+                            // Filtrujemy pracowników wewnątrz kolumny zmiany, aby pasowali do wybranego działu
+                            const visibleShiftEmployees = getFilteredEmployees(allShiftEmployees);
                             const isOver = isDraggingOver === shift.id;
+                            const isGlobal = !shift.departmentId;
+                            
                             return (
                                 <div 
                                     key={shift.id}
                                     onDragOver={(e) => handleDragOver(e, shift.id)}
                                     onDrop={() => handleDrop(shift.id)}
-                                    className={`w-[280px] flex-shrink-0 snap-start flex flex-col rounded-xl transition-all duration-200 border-2 h-full bg-white shadow-sm ${
+                                    className={`flex-1 min-w-[260px] max-w-[320px] flex flex-col rounded-xl transition-all duration-200 border-2 h-full bg-white shadow-sm animate-in fade-in zoom-in-95 ${
                                         isOver ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'
                                     }`}
                                 >
-                                    <div className={`p-3 border-b rounded-t-xl flex justify-between items-center sticky top-0 z-10 bg-white ${isOver ? 'bg-blue-50' : ''}`}>
-                                        <div className="flex items-center gap-2">
-                                            <div className={`p-1.5 rounded-lg ${isOver ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600'}`}><Clock size={16} /></div>
-                                            <div>
-                                                <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wide truncate max-w-[140px]" title={shift.name}>{shift.name}</h3>
-                                                <span className={`text-[10px] font-mono font-medium ${isOver ? 'text-blue-700' : 'text-slate-500'}`}>{shift.startTime} - {shift.endTime}</span>
+                                    <div className={`p-3 border-b rounded-t-xl sticky top-0 z-10 bg-white ${isOver ? 'bg-blue-50' : ''}`}>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`p-1.5 rounded-lg ${isOver ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600'}`}><Clock size={16} /></div>
+                                                <div>
+                                                    <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wide truncate max-w-[120px]" title={shift.name}>{shift.name}</h3>
+                                                    <span className={`text-[10px] font-mono font-medium ${isOver ? 'text-blue-700' : 'text-slate-500'}`}>{shift.startTime} - {shift.endTime}</span>
+                                                </div>
                                             </div>
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
+                                                {visibleShiftEmployees.length}
+                                            </span>
                                         </div>
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">{shiftEmployees.length}</span>
+                                        
+                                        <div className={`text-[9px] font-bold px-2 py-1 rounded inline-flex items-center gap-1 ${isGlobal ? 'bg-slate-100 text-slate-500' : 'bg-indigo-50 text-indigo-600'}`}>
+                                            <Layers size={10}/> {isGlobal ? 'Ogólna' : shift.department?.name}
+                                        </div>
                                     </div>
                                     <div className="flex-1 p-2 overflow-y-auto space-y-2 custom-scrollbar">
-                                        {shiftEmployees.map(emp => <EmployeeCard key={emp.id} employee={emp} onDragStart={() => handleDragStart(emp.id)} />)}
-                                        {shiftEmployees.length === 0 && <div className="h-full flex items-center justify-center text-slate-300 text-xs italic">Przeciągnij tutaj</div>}
+                                        {visibleShiftEmployees.map(emp => <EmployeeCard key={emp.id} employee={emp} onDragStart={() => handleDragStart(emp.id)} />)}
+                                        {visibleShiftEmployees.length === 0 && <div className="h-full flex items-center justify-center text-slate-300 text-xs italic">
+                                            {selectedDeptId !== 'all' && shift.departmentId && shift.departmentId !== Number(selectedDeptId) 
+                                                ? 'Inny dział' 
+                                                : 'Przeciągnij tutaj'}
+                                        </div>}
                                     </div>
                                 </div>
                             );
                         })}
-                        {shifts.length === 0 && (
+                        
+                        {filteredShifts.length === 0 && (
                             <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
-                                <p>Brak zmian.</p>
-                                <button onClick={() => setIsManageModalOpen(true)} className="mt-2 text-blue-600 underline text-sm">Utwórz pierwszą zmianę</button>
+                                <p>Brak zmian dla tego filtru.</p>
+                                {selectedDeptId === 'all' && <button onClick={() => setIsManageModalOpen(true)} className="mt-2 text-blue-600 underline text-sm">Utwórz zmianę</button>}
                             </div>
                         )}
                     </div>
                 </div>
             </div>
 
-            {/* --- FLOATING DROP ZONE (WYPISZ) --- */}
+            {/* FLOATING DROP ZONE */}
             <div 
                 onDragOver={(e) => handleDragOver(e, 'floating-unassigned')}
                 onDrop={() => handleDrop(null)}
@@ -276,6 +349,7 @@ export function SchedulePage() {
                     isOpen={isManageModalOpen} 
                     onClose={() => setIsManageModalOpen(false)} 
                     shifts={shifts}
+                    departments={departments} 
                     refreshData={fetchData}
                 />
             )}
@@ -285,16 +359,10 @@ export function SchedulePage() {
 
 // --- KOMPONENT KAFELKA ---
 const EmployeeCard = ({ employee, onDragStart, mini = false }: { employee: Employee, onDragStart: () => void, mini?: boolean }) => (
-    <div 
-        draggable 
-        onDragStart={onDragStart} 
-        className={`group bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 cursor-grab active:cursor-grabbing transition-all hover:-translate-y-0.5 relative select-none ${mini ? 'p-2' : 'p-3'}`}
-    >
+    <div draggable onDragStart={onDragStart} className={`group bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 cursor-grab active:cursor-grabbing transition-all hover:-translate-y-0.5 relative select-none ${mini ? 'p-2' : 'p-3'}`}>
         {!mini && <div className="absolute right-2 top-3 text-slate-300 group-hover:text-blue-400"><GripVertical size={14} /></div>}
         <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xs border border-slate-200 shrink-0">
-                {employee.firstName[0]}{employee.lastName[0]}
-            </div>
+            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xs border border-slate-200 shrink-0">{employee.firstName[0]}{employee.lastName[0]}</div>
             <div className="min-w-0">
                 <h4 className="font-bold text-slate-800 text-xs leading-tight truncate">{employee.firstName} {employee.lastName}</h4>
                 <p className="text-[10px] text-slate-500 truncate">{employee.position}</p>
@@ -302,30 +370,44 @@ const EmployeeCard = ({ employee, onDragStart, mini = false }: { employee: Emplo
         </div>
         {!mini && (
             <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between items-center">
-                <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1">
-                    <Users size={10}/> {employee.department?.name || "Brak Działu"}
-                </span>
+                <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1"><Users size={10}/> {employee.department?.name || "Brak Działu"}</span>
             </div>
         )}
     </div>
 );
 
 // --- MODAL ZARZĄDZANIA ZMIANAMI ---
-function ShiftManagementModal({ isOpen, onClose, shifts, refreshData }: { isOpen: boolean, onClose: () => void, shifts: Shift[], refreshData: () => void }) {
+function ShiftManagementModal({ isOpen, onClose, shifts, departments, refreshData }: { isOpen: boolean, onClose: () => void, shifts: Shift[], departments: Department[], refreshData: () => void }) {
     const [isEditingId, setIsEditingId] = useState<number | null>(null);
-    const [formData, setFormData] = useState({ name: '', startTime: '', endTime: '' });
+    const [formData, setFormData] = useState({ name: '', startTime: '', endTime: '', departmentId: '' });
 
-    const resetForm = () => { setIsEditingId(null); setFormData({ name: '', startTime: '', endTime: '' }); };
-    const startEdit = (shift: Shift) => { setIsEditingId(shift.id); setFormData({ name: shift.name, startTime: shift.startTime, endTime: shift.endTime }); };
+    const resetForm = () => { setIsEditingId(null); setFormData({ name: '', startTime: '', endTime: '', departmentId: '' }); };
+    
+    const startEdit = (shift: Shift) => {
+        setIsEditingId(shift.id);
+        setFormData({ 
+            name: shift.name, 
+            startTime: shift.startTime, 
+            endTime: shift.endTime,
+            departmentId: shift.departmentId ? String(shift.departmentId) : '' 
+        });
+    };
 
     const handleSave = async () => {
-        if(!formData.name || !formData.startTime || !formData.endTime) return toast.error("Wypełnij wszystkie pola");
+        if(!formData.name || !formData.startTime || !formData.endTime) return toast.error("Wypełnij wymagane pola");
+        
+        const payload = {
+            ...formData,
+            adminId: getAdminId(),
+            departmentId: formData.departmentId ? Number(formData.departmentId) : null
+        };
+
         try {
             if(isEditingId) {
-                await axios.put(`http://localhost:3000/api/shifts/${isEditingId}`, { ...formData, adminId: getAdminId() });
+                await axios.put(`http://localhost:3000/api/shifts/${isEditingId}`, payload);
                 toast.success("Zaktualizowano zmianę");
             } else {
-                await axios.post('http://localhost:3000/api/shifts', { ...formData, adminId: getAdminId() });
+                await axios.post('http://localhost:3000/api/shifts', payload);
                 toast.success("Utworzono nową zmianę");
             }
             refreshData(); resetForm();
@@ -366,6 +448,15 @@ function ShiftManagementModal({ isOpen, onClose, shifts, refreshData }: { isOpen
                         <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">{isEditingId ? <Pencil size={14}/> : <Plus size={14}/>} {isEditingId ? "Edytuj Zmianę" : "Nowa Zmiana"}</h4>
                         <div className="space-y-3">
                             <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nazwa</label><input type="text" className="w-full p-2 border rounded-lg text-sm" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+                            
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Dział (Opcjonalne)</label>
+                                <select className="w-full p-2 border rounded-lg text-sm bg-white" value={formData.departmentId} onChange={e => setFormData({...formData, departmentId: e.target.value})}>
+                                    <option value="">-- Zmiana Ogólna --</option>
+                                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                </select>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-3">
                                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Początek</label><input type="time" className="w-full p-2 border rounded-lg text-sm" value={formData.startTime} onChange={e => setFormData({...formData, startTime: e.target.value})} /></div>
                                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Koniec</label><input type="time" className="w-full p-2 border rounded-lg text-sm" value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} /></div>
@@ -379,7 +470,11 @@ function ShiftManagementModal({ isOpen, onClose, shifts, refreshData }: { isOpen
                     <div className="space-y-2">
                         {shifts.map(s => (
                             <div key={s.id} className={`p-3 rounded-lg border flex justify-between items-center ${isEditingId === s.id ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100'}`}>
-                                <div><span className="font-bold text-slate-700 text-sm block">{s.name}</span><span className="text-xs text-slate-400 font-mono">{s.startTime} - {s.endTime}</span></div>
+                                <div>
+                                    <span className="font-bold text-slate-700 text-sm block">{s.name}</span>
+                                    <span className="text-[10px] text-slate-400 font-mono block mb-1">{s.startTime} - {s.endTime}</span>
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${s.departmentId ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>{s.department ? s.department.name : 'Ogólna'}</span>
+                                </div>
                                 <div className="flex gap-1"><button onClick={() => startEdit(s)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Pencil size={16}/></button><button onClick={() => confirmDelete(s)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button></div>
                             </div>
                         ))}

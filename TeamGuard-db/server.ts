@@ -807,11 +807,12 @@ app.post('/api/employees/onboarding', async (req, res) => {
      return date;
   };
 
+  let adminDept = await prisma.department.findUnique({ where: { name: 'Zarząd' } });
   try {
     // =========================================================
     // KROK A: AUTOMATYCZNE TWORZENIE DZIAŁU "ZARZĄD"
     // =========================================================
-    let adminDept = await prisma.department.findUnique({ where: { name: 'Zarząd' } });
+    
     
     if (!adminDept) {
         // Jeśli nie ma działu Zarząd, tworzymy go
@@ -1736,22 +1737,64 @@ app.get('/api/export/work-logs', async (req, res) => {
 
 // --- ZMIANY (SHIFTS) ---
 app.get('/api/shifts', async (req, res) => {
-    const shifts = await prisma.shift.findMany();
+    const shifts = await prisma.shift.findMany({ include: { department: true } });
     res.json(shifts);
 });
 
-app.post('/api/shifts', async (req, res) => {
-    const { name, startTime, endTime } = req.body;
-    const shift = await prisma.shift.create({
-        data: { name, startTime, endTime }
+// PUT: Edytuj zmianę
+app.put('/api/shifts/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, startTime, endTime, departmentId, adminId } = req.body; // <--- departmentId
+  try {
+    const shift = await prisma.shift.update({
+      where: { id: Number(id) },
+      data: { 
+        name, 
+        startTime, 
+        endTime,
+        departmentId: departmentId ? Number(departmentId) : null // <--- Aktualizujemy
+      }
     });
+
+    if (adminId) {
+        await logAndNotifyAll(Number(adminId), "Edycja Zmiany", `Zaktualizowano zmianę: ${name}`, "/schedule", 0);
+    }
+
     res.json(shift);
+  } catch(e) { res.status(500).json({error: "Błąd edycji"}); }
+});
+
+app.post('/api/shifts', async (req, res) => {
+    const { name, startTime, endTime, departmentId, adminId } = req.body; // <--- departmentId
+  try {
+    const shift = await prisma.shift.create({
+      data: { 
+        name, 
+        startTime, 
+        endTime,
+        departmentId: departmentId ? Number(departmentId) : null // <--- Zapisujemy
+      }
+    });
+    
+    // Logowanie akcji
+    if (adminId) {
+        await logAndNotifyAll(Number(adminId), "Nowa Zmiana", `Utworzono zmianę: ${name}`, "/schedule", 0);
+    }
+
+    res.json(shift);
+  } catch(e) { 
+    console.error(e);
+    res.status(500).json({error: "Błąd tworzenia"}); 
+  }
 });
 
 app.delete('/api/shifts/:id', async (req, res) => {
     const { id } = req.params;
-    await prisma.shift.delete({ where: { id: Number(id) } });
-    res.json({ success: true });
+    try {
+      await prisma.employee.updateMany({ where: { shiftId: Number(id) }, data: { shiftId: null } });
+      await prisma.shift.delete({ where: { id: Number(id) } });
+      res.json({success: true});
+    } catch(e) { res.status(500).json({error: "Błąd usuwania"}); }
 });
 
 const PORT = 3000;

@@ -117,6 +117,7 @@ model Department {
   name                String               @unique
   employees           Employee[]
   onboardingTemplates OnboardingTemplate[]
+  shifts              Shift[] // Relacja z modelu Shift
 }
 
 // --- SZABLONY ONBOARDINGU (Dla działu) ---
@@ -157,5 +158,7 @@ model Shift {
   name      String     // np. "I Zmiana", "Biuro", "Nocna"
   startTime String     // np. "06:00"
   endTime   String     // np. "14:00"
-  employees Employee[]
+  employees Employee[] // Relacja z modelem Employee
+  departmentId Int?   // Powiązanie z działem (opcjonalne)
+  department   Department? @relation(fields: [departmentId], references: [id]) // Relacja z modelem Department
 }
